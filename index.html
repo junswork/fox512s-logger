@@ -117,6 +117,8 @@
     }
 
     input[type="text"],
+    input[type="url"],
+    input[type="password"],
     textarea {
       width: 100%;
       min-height: 48px;
@@ -142,6 +144,8 @@
 
     @media (pointer: coarse) {
       input[type="text"],
+      input[type="url"],
+      input[type="password"],
       button,
       .chk-pill {
         min-height: 52px;
@@ -193,6 +197,7 @@
     .topbar-actions {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 0.45rem;
     }
 
@@ -208,6 +213,21 @@
     .topbar button.hdr-btn:hover {
       background: rgba(255, 255, 255, 0.22);
     }
+
+    .sync-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #94a3b8;
+      flex-shrink: 0;
+    }
+
+    .sync-dot[data-state="synced"] { background: #4ade80; }
+    .sync-dot[data-state="syncing"] { background: #60a5fa; }
+    .sync-dot[data-state="dirty"] { background: #fbbf24; }
+    .sync-dot[data-state="conflict"],
+    .sync-dot[data-state="error"] { background: #f87171; }
+    .sync-dot[data-state="offline"] { background: #94a3b8; }
 
     /* Page Tabs */
     .nav-tabs {
@@ -781,7 +801,7 @@
     .dlg-body {
       padding: 1rem;
       overflow-y: auto;
-      max-height: 66dvh;
+      max-height: 74dvh;
     }
 
     .dlg-actions {
@@ -809,6 +829,38 @@
       grid-template-columns: 1fr 1fr;
       gap: 0.5rem;
       margin-top: 0.65rem;
+    }
+
+    .sync-msg-box {
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.8rem;
+      font-size: 0.86rem;
+      color: var(--ink);
+      margin-bottom: 0.85rem;
+    }
+
+    .sync-msg-box[data-tone="ok"] {
+      background: #f0fdf4;
+      border-color: #16a34a;
+      color: #14532d;
+    }
+
+    .sync-msg-box[data-tone="warn"] {
+      background: var(--amber-bg);
+      border-color: #d97706;
+      color: #78350f;
+    }
+
+    .sync-msg-box[data-tone="err"] {
+      background: var(--danger-bg);
+      border-color: #dc2626;
+      color: #7f1d1d;
+    }
+
+    .span-full {
+      grid-column: 1 / -1;
     }
 
     /* Print View */
@@ -856,6 +908,10 @@
         <span id="save-status" class="save-status" role="status" aria-live="polite">저장됨</span>
       </div>
       <div class="topbar-actions">
+        <button type="button" class="hdr-btn sync-btn" command="show-modal" commandfor="sync-dialog" id="btn-open-sync">
+          <span id="sync-dot" class="sync-dot" data-state="local" aria-hidden="true"></span>
+          <span id="sync-btn-label">클라우드 · 로컬</span>
+        </button>
         <button type="button" class="hdr-btn" command="show-modal" commandfor="backup-dialog" id="btn-open-backup">백업 · 인쇄 · 설정</button>
       </div>
     </div>
@@ -913,6 +969,61 @@
       </div>
       <input type="file" id="import-file-input" accept=".json,application/json" class="visually-hidden" />
     </div>
+  </dialog>
+
+  <!-- Cloud Sync Dialog -->
+  <dialog id="sync-dialog" closedby="any" aria-labelledby="sync-title">
+    <div class="dlg-head">
+      <h2 id="sync-title">클라우드 동기화 (Google Sheets)</h2>
+      <form method="dialog">
+        <button type="submit" value="close" style="min-height:40px; padding:0.3rem 0.7rem;">닫기</button>
+      </form>
+    </div>
+    <div class="dlg-body">
+      <div id="sync-msg-box" class="sync-msg-box" role="status" aria-live="polite">
+        서버 URL과 어실극 접속코드(PIN)를 입력하면 PB 단위(11.01~13.08)로 자동 동기화됩니다.
+      </div>
+
+      <form id="sync-form" aria-labelledby="sync-title">
+        <div class="field">
+          <label for="sync-url">서버 URL (Apps Script 웹 앱 주소)</label>
+          <input type="url" id="sync-url" name="url" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec" />
+        </div>
+        <div class="field">
+          <label for="sync-pin">어실극 접속코드 (PIN)</label>
+          <input type="password" id="sync-pin" name="pin" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="접속코드 입력" />
+        </div>
+        <div class="field">
+          <label for="sync-user">내 이름 (기록자 표시)</label>
+          <input type="text" id="sync-user" name="userName" placeholder="예: 원준" />
+        </div>
+      </form>
+
+      <div class="btn-grid-2">
+        <button type="button" class="primary" id="btn-sync-connect">연결 · 불러오기</button>
+        <button type="button" class="accent" id="btn-sync-now">지금 동기화</button>
+        <button type="button" id="btn-sync-push-all">로컬 전체 올리기</button>
+        <button type="button" id="btn-sync-copy-link">공유 링크 복사</button>
+        <button type="button" class="danger span-full" id="btn-sync-disconnect">연동 해제 (로컬 전용으로)</button>
+      </div>
+      <p class="hint" style="margin:0.75rem 0 0;">
+        ※ 공유 링크(<code>?sync=</code>)에는 접속코드(PIN)가 포함되지 않습니다. 팀원에게는 링크와 PIN을 함께 전달하세요.
+      </p>
+    </div>
+  </dialog>
+
+  <!-- Sync Conflict Resolution Dialog -->
+  <dialog id="conflict-dialog" closedby="closerequest" aria-labelledby="conflict-title">
+    <div class="dlg-head">
+      <h2 id="conflict-title">동기화 충돌 감지</h2>
+    </div>
+    <div class="dlg-body">
+      <p id="conflict-desc" style="margin:0;"></p>
+    </div>
+    <form method="dialog" class="dlg-actions">
+      <button type="submit" value="pull_server" class="accent" autofocus>서버 최신 불러오기</button>
+      <button type="submit" value="force_local" class="danger">내 내용으로 덮어쓰기</button>
+    </form>
   </dialog>
 
   <!-- Destructive Confirmation Dialog -->
@@ -992,10 +1103,22 @@
         };
       }
 
+      const SYNC_STORAGE_KEY = 'eoshil_fox512s_sync_v1';
       let state = loadState();
+      let syncCfg = loadSyncCfg();
       let ui = { tab: 'INDEX', page: 11, pb: 1, stepIdx: 0 };
       const movingOpenMap = new WeakMap();
       let pendingConfirmAction = null;
+
+      const syncRuntime = {
+        status: 'local',
+        dirtyKeys: new Set(),
+        conflictedKeys: new Set(),
+        pushTimer: null,
+        isBusy: false,
+        deferredRender: false,
+        pendingConflict: null,
+      };
 
       function loadState() {
         try {
@@ -1009,14 +1132,88 @@
         }
       }
 
+      function loadSyncCfg() {
+        try {
+          const raw = localStorage.getItem(SYNC_STORAGE_KEY);
+          if (!raw) return { url: '', pin: '', userName: '', versions: {} };
+          const parsed = JSON.parse(raw);
+          return {
+            url: typeof parsed.url === 'string' ? parsed.url : '',
+            pin: typeof parsed.pin === 'string' ? parsed.pin : '',
+            userName: typeof parsed.userName === 'string' ? parsed.userName : '',
+            versions: (parsed.versions && typeof parsed.versions === 'object') ? parsed.versions : {},
+          };
+        } catch {
+          return { url: '', pin: '', userName: '', versions: {} };
+        }
+      }
+
+      function saveSyncCfg() {
+        try {
+          localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(syncCfg));
+        } catch {
+          // ignore storage quota errors on sync settings
+        }
+      }
+
+      function getCurrentPbKey() {
+        return `${ui.page}.${String(ui.pb).padStart(2, '0')}`;
+      }
+
+      function isSyncConfigured() {
+        return Boolean(syncCfg.url && syncCfg.pin);
+      }
+
       const saveStatusEl = document.getElementById('save-status');
-      function persistState(msg = '자동 저장됨') {
+      const syncDotEl = document.getElementById('sync-dot');
+      const syncBtnLabelEl = document.getElementById('sync-btn-label');
+      const syncMsgBoxEl = document.getElementById('sync-msg-box');
+
+      function updateSyncBadge(status, labelOverride = '') {
+        syncRuntime.status = status;
+        const labels = {
+          local: '클라우드 · 로컬',
+          synced: '클라우드 · 동기화됨',
+          syncing: '클라우드 · 동기화 중',
+          dirty: '클라우드 · 대기 중',
+          conflict: '클라우드 · 충돌',
+          error: '클라우드 · 오류',
+          offline: '클라우드 · 오프라인',
+        };
+        if (syncDotEl) syncDotEl.dataset.state = status;
+        if (syncBtnLabelEl) syncBtnLabelEl.textContent = labelOverride || labels[status] || '클라우드 · 로컬';
+      }
+
+      function setSyncMsg(text, tone = '') {
+        if (!syncMsgBoxEl) return;
+        syncMsgBoxEl.textContent = text;
+        if (tone) syncMsgBoxEl.dataset.tone = tone;
+        else syncMsgBoxEl.removeAttribute('data-tone');
+      }
+
+      function saveStateLocalOnly(msg = '') {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          saveStatusEl.textContent = msg;
+          if (msg) saveStatusEl.textContent = msg;
         } catch {
           saveStatusEl.textContent = '저장 공간 부족';
         }
+      }
+
+      function persistState(msg = '자동 저장됨', changedKey) {
+        saveStateLocalOnly(msg);
+        if (!isSyncConfigured()) return;
+        if (changedKey === 'LOCAL_ONLY') {
+          updateSyncBadge('dirty', '클라우드 · 전체 반영 필요');
+          setSyncMsg('로컬 데이터가 크게 변경되었습니다. 서버에 반영하려면 아래 "로컬 전체 올리기"를 누르세요.', 'warn');
+          return;
+        }
+        const key = changedKey || (ui.tab !== 'INDEX' ? getCurrentPbKey() : null);
+        if (!key) return;
+        syncRuntime.dirtyKeys.add(key);
+        syncRuntime.conflictedKeys.delete(key);
+        updateSyncBadge('dirty');
+        schedulePush();
       }
 
       function deepClone(obj) {
@@ -1067,15 +1264,28 @@
 
       // Dialog fallbacks & close handling
       const backupDialog = document.getElementById('backup-dialog');
+      const syncDialog = document.getElementById('sync-dialog');
+      const conflictDialog = document.getElementById('conflict-dialog');
       const confirmDialog = document.getElementById('confirm-dialog');
+
+      function syncSetupInputs() {
+        document.getElementById('sync-url').value = syncCfg.url || '';
+        document.getElementById('sync-pin').value = syncCfg.pin || '';
+        document.getElementById('sync-user').value = syncCfg.userName || '';
+      }
 
       if (!('commandForElement' in HTMLButtonElement.prototype)) {
         document.getElementById('btn-open-backup').addEventListener('click', () => {
           syncMetaInputs();
           backupDialog.showModal();
         });
+        document.getElementById('btn-open-sync').addEventListener('click', () => {
+          syncSetupInputs();
+          syncDialog.showModal();
+        });
       } else {
         document.getElementById('btn-open-backup').addEventListener('click', syncMetaInputs);
+        document.getElementById('btn-open-sync').addEventListener('click', syncSetupInputs);
       }
 
       if (!('closedBy' in HTMLDialogElement.prototype)) {
@@ -1083,12 +1293,15 @@
           const r = dlg.getBoundingClientRect();
           return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
         };
-        let downOut = false;
-        backupDialog.addEventListener('pointerdown', (e) => { downOut = isOutside(e, backupDialog); });
-        backupDialog.addEventListener('pointerup', (e) => { if (downOut && isOutside(e, backupDialog)) backupDialog.close('dismiss'); });
+        for (const dlg of [backupDialog, syncDialog]) {
+          let downOut = false;
+          dlg.addEventListener('pointerdown', (e) => { downOut = isOutside(e, dlg); });
+          dlg.addEventListener('pointerup', (e) => { if (downOut && isOutside(e, dlg)) dlg.close('dismiss'); });
+        }
       }
 
       backupDialog.addEventListener('close', () => { backupDialog.returnValue = ''; });
+      syncDialog.addEventListener('close', () => { syncDialog.returnValue = ''; });
 
       confirmDialog.addEventListener('close', () => {
         const val = confirmDialog.returnValue;
@@ -1117,7 +1330,7 @@
         const t = e.target;
         if (t.name && Object.hasOwn(state.meta, t.name)) {
           state.meta[t.name] = t.value;
-          persistState('메타 저장됨');
+          persistState('메타 저장됨', 'meta');
           if (ui.tab === 'INDEX') render();
         }
       });
@@ -1728,6 +1941,7 @@
       }
 
       function render() {
+        syncRuntime.deferredRender = false;
         updateTabSelection();
         const main = document.getElementById('app-main');
         main.innerHTML = '';
@@ -1761,7 +1975,7 @@
           const parsed = JSON.parse(await file.text());
           if (!parsed || !parsed.pages) throw new Error('형식 오류');
           state = parsed;
-          persistState('JSON 불러오기 완료');
+          persistState('JSON 불러오기 완료', 'LOCAL_ONLY');
           syncMetaInputs();
           backupDialog.close();
           render();
@@ -1902,7 +2116,7 @@
 
         state.pages[11][1].steps = [s1];
         state.pages[11][2].steps = [s2a, s2b];
-        persistState('예시 채움 완료');
+        persistState('예시 채움 완료', 'LOCAL_ONLY');
         syncMetaInputs();
         backupDialog.close();
         render();
@@ -1914,12 +2128,468 @@
         openConfirm('전체 초기화', '입력된 모든 페이지·스텝 데이터를 삭제할까요?', '전체 초기화', () => {
           state = createInitialState();
           ui = { tab: 'INDEX', page: 11, pb: 1, stepIdx: 0 };
-          persistState('초기화됨');
+          persistState('초기화됨', 'LOCAL_ONLY');
           render();
         });
       });
 
+      // Cloud Sync Engine (Google Apps Script + Google Sheets)
+      function isEditorInputFocused() {
+        const el = document.activeElement;
+        if (!el) return false;
+        const main = document.getElementById('app-main');
+        return Boolean(main && main.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+      }
+
+      function anyDialogOpen() {
+        return backupDialog.open || syncDialog.open || conflictDialog.open || confirmDialog.open;
+      }
+
+      document.getElementById('app-main').addEventListener('focusout', () => {
+        setTimeout(() => {
+          if (syncRuntime.deferredRender && !isEditorInputFocused() && !anyDialogOpen()) {
+            syncRuntime.deferredRender = false;
+            render();
+            syncMetaInputs();
+          }
+        }, 25);
+      });
+
+      function getPayloadForKey(key) {
+        if (key === 'meta') return deepClone(state.meta);
+        const m = /^(11|12|13)\.0([1-8])$/.exec(key);
+        if (!m) return null;
+        return deepClone(state.pages[Number(m[1])][Number(m[2])]);
+      }
+
+      function applyRemoteKey(key, payload, version) {
+        if (!payload || typeof payload !== 'object') return false;
+        if (key === 'meta') {
+          state.meta = {
+            title: String(payload.title || ''),
+            owner: String(payload.owner || ''),
+            usbFile: String(payload.usbFile || 'FOX11'),
+          };
+          syncCfg.versions.meta = Number(version || 0);
+          return true;
+        }
+        const m = /^(11|12|13)\.0([1-8])$/.exec(key);
+        if (!m) return false;
+        const p = Number(m[1]);
+        const pb = Number(m[2]);
+        if (!Array.isArray(payload.steps) || payload.steps.length === 0) return false;
+        state.pages[p][pb] = { steps: payload.steps };
+        syncCfg.versions[key] = Number(version || 0);
+        return true;
+      }
+
+      function schedulePush() {
+        if (syncRuntime.pushTimer) clearTimeout(syncRuntime.pushTimer);
+        syncRuntime.pushTimer = setTimeout(() => {
+          syncRuntime.pushTimer = null;
+          pushDirtyKeys();
+        }, 1500);
+      }
+
+      async function callSyncApi(action, extraBody = {}) {
+        if (!syncCfg.url || !syncCfg.pin) {
+          throw new Error('서버 URL과 접속코드(PIN)를 입력하세요.');
+        }
+        let resp;
+        try {
+          resp = await fetch(syncCfg.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action,
+              pin: syncCfg.pin,
+              updatedBy: (syncCfg.userName || '').trim() || '익명',
+              ...extraBody,
+            }),
+            redirect: 'follow',
+          });
+        } catch {
+          updateSyncBadge('offline');
+          throw new Error('네트워크 연결 오류 (로컬 브라우저에는 안전하게 저장됨)');
+        }
+        try {
+          return await resp.json();
+        } catch {
+          throw new Error('서버 응답을 해석할 수 없습니다 (Apps Script 배포 권한을 확인하세요)');
+        }
+      }
+
+      function openConflictPrompt(pendingInfo) {
+        if (conflictDialog.open) return;
+        if (syncDialog.open) syncDialog.close();
+        syncRuntime.pendingConflict = pendingInfo;
+        const { key, res } = pendingInfo;
+        const who = res.serverUpdatedBy ? `${res.serverUpdatedBy}` : '다른 기기';
+        const myVer = Number(syncCfg.versions[key] || 0);
+        const srvVer = Number(res.serverVersion || 0);
+        const label = key === 'meta' ? '공연 기본 정보' : key;
+        document.getElementById('conflict-desc').textContent =
+          `${label}에서 ${who} 님이 먼저 저장한 변경사항이 있습니다 (서버 v${srvVer} / 내 기준 v${myVer}). 어떤 내용을 유지할까요?`;
+        conflictDialog.showModal();
+      }
+
+      async function saveKeyToServer(key, force = false) {
+        const payload = getPayloadForKey(key);
+        if (!payload) return { ok: true };
+        const res = await callSyncApi('save_key', {
+          key,
+          baseVersion: Number(syncCfg.versions[key] || 0),
+          force,
+          payload,
+        });
+        if (res.ok) {
+          syncCfg.versions[key] = Number(res.version || 0);
+          syncRuntime.dirtyKeys.delete(key);
+          syncRuntime.conflictedKeys.delete(key);
+          saveSyncCfg();
+          return { ok: true };
+        }
+        if (res.error === 'INVALID_PIN') {
+          updateSyncBadge('error');
+          setSyncMsg(res.message || '접속코드(PIN)가 올바르지 않습니다.', 'err');
+          return { ok: false, stop: true, msg: res.message || '접속코드 오류' };
+        }
+        if (res.error === 'CONFLICT') {
+          syncRuntime.conflictedKeys.add(key);
+          updateSyncBadge('conflict');
+          openConflictPrompt({ mode: 'single', key, res });
+          return { ok: false, stop: true, conflict: true };
+        }
+        throw new Error(res.message || res.error || '서버 저장 실패');
+      }
+
+      async function pushDirtyKeys({ includeConflicted = false } = {}) {
+        if (!isSyncConfigured() || syncRuntime.isBusy) return false;
+        const keys = [...syncRuntime.dirtyKeys].filter(k => includeConflicted || !syncRuntime.conflictedKeys.has(k));
+        if (!keys.length) return true;
+
+        syncRuntime.isBusy = true;
+        updateSyncBadge('syncing');
+        try {
+          for (const key of keys) {
+            const r = await saveKeyToServer(key, false);
+            if (!r.ok) return false;
+          }
+          if (syncRuntime.dirtyKeys.size === 0 && syncRuntime.conflictedKeys.size === 0) {
+            updateSyncBadge('synced');
+            saveStatusEl.textContent = '클라우드 저장됨';
+            setSyncMsg('서버와 동기화되었습니다.', 'ok');
+          }
+          return true;
+        } catch (err) {
+          if (syncRuntime.status !== 'offline') updateSyncBadge('error');
+          setSyncMsg(err.message || '동기화 중 오류가 발생했습니다.', 'err');
+          return false;
+        } finally {
+          syncRuntime.isBusy = false;
+        }
+      }
+
+      async function pullFromServer({ silent = false, includeDirtyOverride = false } = {}) {
+        if (!isSyncConfigured()) return false;
+        if (syncRuntime.isBusy && silent) return false;
+
+        syncRuntime.isBusy = true;
+        if (!silent) updateSyncBadge('syncing');
+        try {
+          const res = await callSyncApi('pull');
+          if (!res.ok) {
+            if (res.error === 'INVALID_PIN') {
+              updateSyncBadge('error');
+              setSyncMsg(res.message || '접속코드(PIN)가 올바르지 않습니다.', 'err');
+            } else {
+              updateSyncBadge('error');
+              setSyncMsg(res.message || res.error || '불러오기 실패', 'err');
+            }
+            return false;
+          }
+
+          const items = (res.items && typeof res.items === 'object') ? res.items : {};
+          const itemKeys = Object.keys(items);
+          let updatedCount = 0;
+
+          for (const key of itemKeys) {
+            if (!includeDirtyOverride && (syncRuntime.dirtyKeys.has(key) || syncRuntime.conflictedKeys.has(key))) continue;
+            const entry = items[key];
+            if (!entry || !entry.payload) continue;
+            const serverVer = Number(entry.version || 0);
+            const localVer = Number(syncCfg.versions[key] || 0);
+            if (serverVer > localVer || !Object.hasOwn(syncCfg.versions, key)) {
+              if (applyRemoteKey(key, entry.payload, serverVer)) {
+                updatedCount++;
+              }
+            }
+          }
+
+          saveSyncCfg();
+          if (updatedCount > 0) {
+            saveStateLocalOnly(`클라우드 반영 (${updatedCount}건)`);
+            if (silent && isEditorInputFocused()) {
+              syncRuntime.deferredRender = true;
+              updateSyncBadge('synced', '클라우드 · 새 데이터');
+            } else {
+              render();
+              syncMetaInputs();
+            }
+          }
+
+          if (syncRuntime.conflictedKeys.size) {
+            updateSyncBadge('conflict');
+          } else if (syncRuntime.dirtyKeys.size) {
+            updateSyncBadge('dirty');
+          } else if (!syncRuntime.deferredRender) {
+            updateSyncBadge('synced');
+          }
+
+          if (!silent) {
+            if (itemKeys.length === 0) {
+              setSyncMsg('서버 연결됨 (서버가 비어 있습니다. 기존 작업이 있다면 "로컬 전체 올리기"를 누르세요)', 'ok');
+            } else {
+              setSyncMsg(`연결 · 동기화 완료 (전체 ${itemKeys.length}개 항목 중 ${updatedCount}건 반영)`, 'ok');
+            }
+          }
+          return true;
+        } catch (err) {
+          if (syncRuntime.status !== 'offline') updateSyncBadge('error');
+          if (!silent) setSyncMsg(err.message || '불러오기 중 오류가 발생했습니다.', 'err');
+          return false;
+        } finally {
+          syncRuntime.isBusy = false;
+        }
+      }
+
+      async function pushAllToServer(force = false) {
+        if (!isSyncConfigured() || syncRuntime.isBusy) {
+          if (!isSyncConfigured()) setSyncMsg('서버 URL과 접속코드(PIN)를 먼저 입력하세요.', 'err');
+          return;
+        }
+        syncRuntime.isBusy = true;
+        updateSyncBadge('syncing');
+        try {
+          const items = {
+            meta: { baseVersion: Number(syncCfg.versions.meta || 0), payload: deepClone(state.meta) },
+          };
+          for (const p of PAGES) {
+            for (let pb = 1; pb <= 8; pb++) {
+              const key = `${p}.${String(pb).padStart(2, '0')}`;
+              if (pbHasData(p, pb) || Number(syncCfg.versions[key] || 0) > 0) {
+                items[key] = {
+                  baseVersion: Number(syncCfg.versions[key] || 0),
+                  payload: deepClone(state.pages[p][pb]),
+                };
+              }
+            }
+          }
+          const res = await callSyncApi('push_all', { items, force });
+          if (res.ok) {
+            const saved = res.items || {};
+            for (const [k, info] of Object.entries(saved)) {
+              syncCfg.versions[k] = Number(info.version || 0);
+            }
+            syncRuntime.dirtyKeys.clear();
+            syncRuntime.conflictedKeys.clear();
+            saveSyncCfg();
+            updateSyncBadge('synced');
+            saveStatusEl.textContent = '전체 업로드 완료';
+            setSyncMsg(`로컬 데이터 ${Object.keys(saved).length}개 항목을 서버에 올렸습니다.`, 'ok');
+            return;
+          }
+          if (res.error === 'INVALID_PIN') {
+            updateSyncBadge('error');
+            setSyncMsg(res.message || '접속코드(PIN)가 올바르지 않습니다.', 'err');
+            return;
+          }
+          if (res.error === 'CONFLICT') {
+            updateSyncBadge('conflict');
+            if (syncDialog.open) syncDialog.close();
+            openConflictPrompt({ mode: 'push_all', key: res.key, res });
+            return;
+          }
+          throw new Error(res.message || res.error || '전체 업로드 실패');
+        } catch (err) {
+          if (syncRuntime.status !== 'offline') updateSyncBadge('error');
+          setSyncMsg(err.message || '전체 업로드 중 오류가 발생했습니다.', 'err');
+        } finally {
+          syncRuntime.isBusy = false;
+        }
+      }
+
+      document.getElementById('sync-form').addEventListener('submit', (e) => e.preventDefault());
+      document.getElementById('sync-form').addEventListener('input', (e) => {
+        const t = e.target;
+        if (!t.name) return;
+        const val = t.name === 'url' ? t.value.trim() : t.value;
+        if (t.name === 'url' && val !== syncCfg.url) {
+          syncCfg.versions = {};
+        }
+        syncCfg[t.name] = val;
+        saveSyncCfg();
+      });
+
+      document.getElementById('btn-sync-connect').addEventListener('click', async () => {
+        syncCfg.url = document.getElementById('sync-url').value.trim();
+        syncCfg.pin = document.getElementById('sync-pin').value.trim();
+        syncCfg.userName = document.getElementById('sync-user').value.trim();
+        saveSyncCfg();
+        if (!isSyncConfigured()) {
+          setSyncMsg('서버 URL과 어실극 접속코드(PIN)를 모두 입력하세요.', 'err');
+          return;
+        }
+        await pullFromServer({ silent: false });
+      });
+
+      document.getElementById('btn-sync-now').addEventListener('click', async () => {
+        if (!isSyncConfigured()) {
+          setSyncMsg('먼저 서버 URL과 접속코드(PIN)를 입력하고 연결하세요.', 'err');
+          return;
+        }
+        if (syncRuntime.pushTimer) {
+          clearTimeout(syncRuntime.pushTimer);
+          syncRuntime.pushTimer = null;
+        }
+        const pushed = await pushDirtyKeys({ includeConflicted: true });
+        if (pushed) {
+          await pullFromServer({ silent: false });
+        }
+      });
+
+      document.getElementById('btn-sync-push-all').addEventListener('click', () => {
+        if (!isSyncConfigured()) {
+          setSyncMsg('먼저 서버 URL과 접속코드(PIN)를 입력하고 연결하세요.', 'err');
+          return;
+        }
+        if (syncDialog.open) syncDialog.close();
+        openConfirm(
+          '로컬 전체 올리기',
+          '현재 기기에 있는 공연 정보와 모든 입력 PB 데이터를 서버로 업로드할까요?',
+          '서버에 올리기',
+          () => {
+            pushAllToServer(false);
+          }
+        );
+      });
+
+      document.getElementById('btn-sync-copy-link').addEventListener('click', async () => {
+        const rawUrl = document.getElementById('sync-url').value.trim() || syncCfg.url;
+        if (!rawUrl) {
+          setSyncMsg('공유 링크를 만들 서버 URL을 먼저 입력하세요.', 'err');
+          return;
+        }
+        const base = (location.origin && location.origin !== 'null')
+          ? `${location.origin}${location.pathname}`
+          : location.href.split('?')[0];
+        const shareUrl = `${base}?sync=${encodeURIComponent(rawUrl)}`;
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          setSyncMsg('팀원 공유 링크를 복사했습니다 (접속코드 PIN은 별도 전달).', 'ok');
+        } catch {
+          setSyncMsg(`공유 링크: ${shareUrl}`, 'ok');
+        }
+      });
+
+      document.getElementById('btn-sync-disconnect').addEventListener('click', () => {
+        if (syncRuntime.pushTimer) {
+          clearTimeout(syncRuntime.pushTimer);
+          syncRuntime.pushTimer = null;
+        }
+        syncCfg = { url: '', pin: '', userName: syncCfg.userName || '', versions: {} };
+        syncRuntime.dirtyKeys.clear();
+        syncRuntime.conflictedKeys.clear();
+        saveSyncCfg();
+        syncSetupInputs();
+        updateSyncBadge('local');
+        setSyncMsg('클라우드 연동을 해제했습니다. 현재 기기의 데이터는 그대로 유지됩니다.', '');
+      });
+
+      conflictDialog.addEventListener('close', async () => {
+        const choice = conflictDialog.returnValue;
+        conflictDialog.returnValue = '';
+        const pending = syncRuntime.pendingConflict;
+        syncRuntime.pendingConflict = null;
+        if (!pending) return;
+
+        const { mode, key, res } = pending;
+        if (choice === 'pull_server') {
+          if (res.serverPayload) {
+            applyRemoteKey(key, res.serverPayload, res.serverVersion);
+          } else {
+            syncCfg.versions[key] = Number(res.serverVersion || 0);
+          }
+          syncRuntime.dirtyKeys.delete(key);
+          syncRuntime.conflictedKeys.delete(key);
+          saveStateLocalOnly('서버 최신 반영됨');
+          saveSyncCfg();
+          updateSyncBadge(syncRuntime.dirtyKeys.size ? 'dirty' : 'synced');
+          render();
+          syncMetaInputs();
+          if (syncRuntime.dirtyKeys.size) await pushDirtyKeys();
+        } else if (choice === 'force_local') {
+          if (mode === 'push_all') {
+            await pushAllToServer(true);
+          } else {
+            syncRuntime.isBusy = true;
+            updateSyncBadge('syncing');
+            try {
+              const r = await saveKeyToServer(key, true);
+              if (r.ok && syncRuntime.dirtyKeys.size === 0) {
+                updateSyncBadge('synced');
+                saveStatusEl.textContent = '내 내용으로 덮어씀';
+              }
+            } catch (err) {
+              updateSyncBadge('error');
+              setSyncMsg(err.message || '덮어쓰기 실패', 'err');
+            } finally {
+              syncRuntime.isBusy = false;
+            }
+            if (syncRuntime.dirtyKeys.size) await pushDirtyKeys();
+          }
+        }
+      });
+
+      window.addEventListener('online', () => {
+        if (isSyncConfigured()) {
+          if (syncRuntime.dirtyKeys.size) pushDirtyKeys();
+          else pullFromServer({ silent: true });
+        }
+      });
+
+      setInterval(() => {
+        if (!isSyncConfigured() || document.hidden || anyDialogOpen() || syncRuntime.isBusy) return;
+        pullFromServer({ silent: true });
+      }, 10000);
+
+      // URL ?sync=... parameter prefill
+      const urlParams = new URLSearchParams(window.location.search);
+      const syncParam = urlParams.get('sync');
+      let shouldOpenSyncOnLoad = false;
+      if (syncParam && /^https:\/\/script\.google\.com\/.+\/exec(\?.*)?$/.test(syncParam.trim())) {
+        const cleanUrl = syncParam.trim();
+        if (syncCfg.url !== cleanUrl) {
+          syncCfg.url = cleanUrl;
+          syncCfg.versions = {};
+          saveSyncCfg();
+        }
+        if (!syncCfg.pin) shouldOpenSyncOnLoad = true;
+      }
+
       render();
+      if (isSyncConfigured()) {
+        updateSyncBadge('syncing');
+        setSyncMsg('서버에 연결되어 있습니다. 10초마다 자동 동기화됩니다.', 'ok');
+        pullFromServer({ silent: true });
+      } else {
+        updateSyncBadge('local');
+      }
+      if (shouldOpenSyncOnLoad) {
+        syncSetupInputs();
+        setSyncMsg('팀 공유 링크로 접속했습니다. 접속코드(PIN)와 내 이름을 입력한 뒤 "연결 · 불러오기"를 누르세요.', 'warn');
+        syncDialog.showModal();
+      }
     })();
   </script>
 </body>
