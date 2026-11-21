@@ -863,6 +863,31 @@
       grid-column: 1 / -1;
     }
 
+    .presence-list {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.45rem 0.65rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.82rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .presence-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: #dcfce7;
+      color: #14532d;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+
     /* Print View */
     #print-area {
       display: none;
@@ -910,7 +935,7 @@
       <div class="topbar-actions">
         <button type="button" class="hdr-btn sync-btn" command="show-modal" commandfor="sync-dialog" id="btn-open-sync">
           <span id="sync-dot" class="sync-dot" data-state="local" aria-hidden="true"></span>
-          <span id="sync-btn-label">클라우드 · 로컬</span>
+          <span id="sync-btn-label">실시간 · 로컬</span>
         </button>
         <button type="button" class="hdr-btn" command="show-modal" commandfor="backup-dialog" id="btn-open-backup">백업 · 인쇄 · 설정</button>
       </div>
@@ -974,56 +999,42 @@
   <!-- Cloud Sync Dialog -->
   <dialog id="sync-dialog" closedby="any" aria-labelledby="sync-title">
     <div class="dlg-head">
-      <h2 id="sync-title">클라우드 동기화 (Google Sheets)</h2>
+      <h2 id="sync-title">실시간 동기화 (Firebase)</h2>
       <form method="dialog">
         <button type="submit" value="close" style="min-height:40px; padding:0.3rem 0.7rem;">닫기</button>
       </form>
     </div>
     <div class="dlg-body">
       <div id="sync-msg-box" class="sync-msg-box" role="status" aria-live="polite">
-        서버 URL과 어실극 접속코드(PIN)를 입력하면 PB 단위(11.01~13.08)로 자동 동기화됩니다.
+        Firebase Database URL과 접속코드(PIN)를 입력하면 여러 기기에서 실시간 동시 편집됩니다.
       </div>
+      <div id="sync-presence-box" class="presence-list" hidden></div>
 
       <form id="sync-form" aria-labelledby="sync-title">
         <div class="field">
-          <label for="sync-url">서버 URL (Apps Script 웹 앱 주소)</label>
-          <input type="url" id="sync-url" name="url" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="https://script.google.com/macros/s/.../exec" />
+          <label for="sync-url">Firebase Database URL</label>
+          <input type="url" id="sync-url" name="url" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="https://...-default-rtdb.asia-southeast1.firebasedatabase.app" />
         </div>
         <div class="field">
           <label for="sync-pin">어실극 접속코드 (PIN)</label>
           <input type="password" id="sync-pin" name="pin" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="접속코드 입력" />
         </div>
         <div class="field">
-          <label for="sync-user">내 이름 (기록자 표시)</label>
+          <label for="sync-user">내 이름 (접속자 표시)</label>
           <input type="text" id="sync-user" name="userName" placeholder="예: 원준" />
         </div>
       </form>
 
       <div class="btn-grid-2">
-        <button type="button" class="primary" id="btn-sync-connect">연결 · 불러오기</button>
-        <button type="button" class="accent" id="btn-sync-now">지금 동기화</button>
+        <button type="button" class="primary" id="btn-sync-connect">연결</button>
         <button type="button" id="btn-sync-push-all">로컬 전체 올리기</button>
         <button type="button" id="btn-sync-copy-link">공유 링크 복사</button>
-        <button type="button" class="danger span-full" id="btn-sync-disconnect">연동 해제 (로컬 전용으로)</button>
+        <button type="button" class="danger" id="btn-sync-disconnect">연동 해제</button>
       </div>
       <p class="hint" style="margin:0.75rem 0 0;">
-        ※ 공유 링크(<code>?sync=</code>)에는 접속코드(PIN)가 포함되지 않습니다. 팀원에게는 링크와 PIN을 함께 전달하세요.
+        ※ 공유 링크(<code>?fb=</code>)에는 접속코드(PIN)가 포함되지 않습니다. 팀원에게는 링크와 PIN을 함께 전달하세요.
       </p>
     </div>
-  </dialog>
-
-  <!-- Sync Conflict Resolution Dialog -->
-  <dialog id="conflict-dialog" closedby="closerequest" aria-labelledby="conflict-title">
-    <div class="dlg-head">
-      <h2 id="conflict-title">동기화 충돌 감지</h2>
-    </div>
-    <div class="dlg-body">
-      <p id="conflict-desc" style="margin:0;"></p>
-    </div>
-    <form method="dialog" class="dlg-actions">
-      <button type="submit" value="pull_server" class="accent" autofocus>서버 최신 불러오기</button>
-      <button type="submit" value="force_local" class="danger">내 내용으로 덮어쓰기</button>
-    </form>
   </dialog>
 
   <!-- Destructive Confirmation Dialog -->
@@ -1103,22 +1114,129 @@
         };
       }
 
-      const SYNC_STORAGE_KEY = 'eoshil_fox512s_sync_v1';
-      let state = loadState();
+      const DEFAULT_DB_URL = '';
+      const SYNC_STORAGE_KEY = 'eoshil_fox512s_rtdb_v2';
+      let state = normalizeState(loadState());
       let syncCfg = loadSyncCfg();
       let ui = { tab: 'INDEX', page: 11, pb: 1, stepIdx: 0 };
-      const movingOpenMap = new WeakMap();
+      const movingOpenMap = new Map();
       let pendingConfirmAction = null;
 
+      const clientId = 'c_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
       const syncRuntime = {
-        status: 'local',
-        dirtyKeys: new Set(),
-        conflictedKeys: new Set(),
-        pushTimer: null,
-        isBusy: false,
+        status: 'local', // 'local' | 'connecting' | 'synced' | 'saving' | 'error' | 'offline'
+        app: null,
+        db: null,
+        mod: null,
+        roomHash: '',
+        unsubs: [],
+        peers: [],
+        knownServerPbs: new Set(),
+        pendingFields: new Map(), // relPath -> { seq, val }
+        fieldTimers: new Map(),   // relPath -> timerId
+        fieldSeq: Object.create(null),
+        wholePbInFlight: new Set(),
+        pbSeedTimers: new Map(),
+        editorBindings: null,
         deferredRender: false,
-        pendingConflict: null,
+        connected: false,
+        hasReceivedSnapshot: false,
       };
+
+      function toArrayLike(v) {
+        if (Array.isArray(v)) return v;
+        if (v && typeof v === 'object') {
+          return Object.keys(v)
+            .sort((a, b) => Number(a) - Number(b))
+            .map((k) => v[k]);
+        }
+        return [];
+      }
+
+      function normalizeFixtures(v) {
+        return toArrayLike(v).map(Number).filter((n) => Number.isFinite(n));
+      }
+
+      function normalizeParGroup(g) {
+        const ch = {};
+        for (const [k] of PAR_CHANNELS) ch[k] = String((g && g.ch && g.ch[k]) ?? '');
+        return {
+          fixtures: normalizeFixtures(g && g.fixtures),
+          ch,
+          note: String((g && g.note) ?? ''),
+        };
+      }
+
+      function normalizeSpotGroup(g) {
+        const ch = {};
+        for (const [k] of SPOT_CHANNELS) ch[k] = String((g && g.ch && g.ch[k]) ?? '');
+        return {
+          fixtures: normalizeFixtures(g && g.fixtures),
+          ch,
+          note: String((g && g.note) ?? ''),
+        };
+      }
+
+      function normalizeMovUnit(u) {
+        const out = {};
+        for (const [k] of MOV_CHANNELS) out[k] = String((u && u[k]) ?? '');
+        return out;
+      }
+
+      function normalizeStep(raw) {
+        const parArr = toArrayLike(raw && raw.par).map(normalizeParGroup);
+        const spotArr = toArrayLike(raw && raw.spot).map(normalizeSpotGroup);
+        const mv = (raw && raw.moving) || {};
+        return {
+          scene: String((raw && raw.scene) ?? ''),
+          memo: String((raw && raw.memo) ?? ''),
+          time: String((raw && raw.time) ?? ''),
+          cross: String((raw && raw.cross) ?? ''),
+          border: {
+            r: String((raw && raw.border && raw.border.r) ?? ''),
+            g: String((raw && raw.border && raw.border.g) ?? ''),
+            b: String((raw && raw.border && raw.border.b) ?? ''),
+            note: String((raw && raw.border && raw.border.note) ?? ''),
+          },
+          par: parArr.length ? parArr : [emptyParGroup()],
+          spot: spotArr.length ? spotArr : [emptySpotGroup()],
+          moving: {
+            f9: normalizeMovUnit(mv.f9),
+            f10Same: mv.f10Same !== false,
+            f10: normalizeMovUnit(mv.f10),
+          },
+        };
+      }
+
+      function normalizePb(raw) {
+        const steps = toArrayLike(raw && raw.steps).map(normalizeStep);
+        return { steps: steps.length ? steps : [createEmptyStep()] };
+      }
+
+      function normalizeMeta(raw) {
+        return {
+          title: String((raw && raw.title) ?? ''),
+          owner: String((raw && raw.owner) ?? ''),
+          usbFile: String((raw && raw.usbFile) ?? 'FOX11'),
+        };
+      }
+
+      function normalizeState(raw) {
+        const base = createInitialState();
+        if (!raw || typeof raw !== 'object') return base;
+        base.meta = normalizeMeta(raw.meta);
+        if (raw.pages && typeof raw.pages === 'object') {
+          for (const p of PAGES) {
+            const pObj = raw.pages[p] || raw.pages[String(p)];
+            if (!pObj) continue;
+            for (let pb = 1; pb <= 8; pb++) {
+              const pbObj = pObj[pb] || pObj[String(pb)];
+              if (pbObj) base.pages[p][pb] = normalizePb(pbObj);
+            }
+          }
+        }
+        return base;
+      }
 
       function loadState() {
         try {
@@ -1135,16 +1253,15 @@
       function loadSyncCfg() {
         try {
           const raw = localStorage.getItem(SYNC_STORAGE_KEY);
-          if (!raw) return { url: '', pin: '', userName: '', versions: {} };
+          if (!raw) return { url: '', pin: '', userName: '' };
           const parsed = JSON.parse(raw);
           return {
-            url: typeof parsed.url === 'string' ? parsed.url : '',
+            url: typeof parsed.url === 'string' ? parsed.url.trim().replace(/\/+$/, '') : '',
             pin: typeof parsed.pin === 'string' ? parsed.pin : '',
             userName: typeof parsed.userName === 'string' ? parsed.userName : '',
-            versions: (parsed.versions && typeof parsed.versions === 'object') ? parsed.versions : {},
           };
         } catch {
-          return { url: '', pin: '', userName: '', versions: {} };
+          return { url: '', pin: '', userName: '' };
         }
       }
 
@@ -1160,6 +1277,10 @@
         return `${ui.page}.${String(ui.pb).padStart(2, '0')}`;
       }
 
+      function pbKeyToDbKey(pbKey) {
+        return String(pbKey).replace('.', '_');
+      }
+
       function isSyncConfigured() {
         return Boolean(syncCfg.url && syncCfg.pin);
       }
@@ -1168,20 +1289,24 @@
       const syncDotEl = document.getElementById('sync-dot');
       const syncBtnLabelEl = document.getElementById('sync-btn-label');
       const syncMsgBoxEl = document.getElementById('sync-msg-box');
+      const syncPresenceBoxEl = document.getElementById('sync-presence-box');
 
       function updateSyncBadge(status, labelOverride = '') {
         syncRuntime.status = status;
+        const dotState = status === 'connecting' ? 'syncing'
+          : status === 'saving' ? 'dirty'
+          : status;
+        const nPeers = syncRuntime.peers.length;
         const labels = {
-          local: '클라우드 · 로컬',
-          synced: '클라우드 · 동기화됨',
-          syncing: '클라우드 · 동기화 중',
-          dirty: '클라우드 · 대기 중',
-          conflict: '클라우드 · 충돌',
-          error: '클라우드 · 오류',
-          offline: '클라우드 · 오프라인',
+          local: '실시간 · 로컬',
+          connecting: '실시간 · 연결 중',
+          synced: nPeers > 0 ? `실시간 · ${nPeers}명` : '실시간 · 연결됨',
+          saving: nPeers > 0 ? `실시간 · 저장 중 (${nPeers}명)` : '실시간 · 저장 중',
+          error: '실시간 · 오류',
+          offline: '실시간 · 오프라인',
         };
-        if (syncDotEl) syncDotEl.dataset.state = status;
-        if (syncBtnLabelEl) syncBtnLabelEl.textContent = labelOverride || labels[status] || '클라우드 · 로컬';
+        if (syncDotEl) syncDotEl.dataset.state = dotState;
+        if (syncBtnLabelEl) syncBtnLabelEl.textContent = labelOverride || labels[status] || '실시간 · 로컬';
       }
 
       function setSyncMsg(text, tone = '') {
@@ -1200,20 +1325,32 @@
         }
       }
 
-      function persistState(msg = '자동 저장됨', changedKey) {
+      function persistLocalBulk(msg = '자동 저장됨') {
         saveStateLocalOnly(msg);
         if (!isSyncConfigured()) return;
-        if (changedKey === 'LOCAL_ONLY') {
-          updateSyncBadge('dirty', '클라우드 · 전체 반영 필요');
-          setSyncMsg('로컬 데이터가 크게 변경되었습니다. 서버에 반영하려면 아래 "로컬 전체 올리기"를 누르세요.', 'warn');
-          return;
+        updateSyncBadge(syncRuntime.status, '실시간 · 전체 반영 필요');
+        setSyncMsg('로컬 데이터가 크게 변경되었습니다. 서버에 반영하려면 아래 "로컬 전체 올리기"를 누르세요.', 'warn');
+      }
+
+      function persistField(pbKey, stepIdx, relPath, val, immediate = false) {
+        saveStateLocalOnly('자동 저장됨');
+        if (isSyncConfigured() && syncRuntime.db) {
+          queueFieldSync(pbKey, stepIdx, relPath, val, immediate);
         }
-        const key = changedKey || (ui.tab !== 'INDEX' ? getCurrentPbKey() : null);
-        if (!key) return;
-        syncRuntime.dirtyKeys.add(key);
-        syncRuntime.conflictedKeys.delete(key);
-        updateSyncBadge('dirty');
-        schedulePush();
+      }
+
+      function persistMetaField(field, val) {
+        saveStateLocalOnly('메타 저장됨');
+        if (isSyncConfigured() && syncRuntime.db) {
+          queueMetaFieldSync(field, val);
+        }
+      }
+
+      function persistWholePb(msg, pbKey = getCurrentPbKey()) {
+        saveStateLocalOnly(msg);
+        if (isSyncConfigured() && syncRuntime.db) {
+          syncWholePbToServer(pbKey);
+        }
       }
 
       function deepClone(obj) {
@@ -1265,7 +1402,6 @@
       // Dialog fallbacks & close handling
       const backupDialog = document.getElementById('backup-dialog');
       const syncDialog = document.getElementById('sync-dialog');
-      const conflictDialog = document.getElementById('conflict-dialog');
       const confirmDialog = document.getElementById('confirm-dialog');
 
       function syncSetupInputs() {
@@ -1330,7 +1466,7 @@
         const t = e.target;
         if (t.name && Object.hasOwn(state.meta, t.name)) {
           state.meta[t.name] = t.value;
-          persistState('메타 저장됨', 'meta');
+          persistMetaField(t.name, t.value);
           if (ui.tab === 'INDEX') render();
         }
       });
@@ -1384,6 +1520,7 @@
       // Render Tabs
       document.querySelectorAll('.tab-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
+          flushPendingFieldTimers();
           const tab = btn.dataset.tab;
           ui.tab = tab;
           if (tab !== 'INDEX') {
@@ -1391,6 +1528,7 @@
             ui.stepIdx = 0;
           }
           render();
+          updatePresence();
         });
       });
 
@@ -1401,6 +1539,7 @@
       }
 
       function renderIndex(root) {
+        syncRuntime.editorBindings = null;
         const metaBar = makeEl('div', { className: 'index-meta-bar' });
         const summary = makeEl('div', { className: 'index-meta-summary' });
         const titleTxt = state.meta.title || '공연명 미입력';
@@ -1452,6 +1591,7 @@
               ui.pb = pb;
               ui.stepIdx = 0;
               render();
+              updatePresence();
             });
             grid.appendChild(card);
           }
@@ -1461,8 +1601,27 @@
       }
 
       function renderEditor(root) {
+        const pbKey = getCurrentPbKey();
         const pbData = state.pages[ui.page][ui.pb];
         const step = getActiveStep();
+        const sIdx = ui.stepIdx;
+        const movKey = `${ui.page}.${ui.pb}:${sIdx}`;
+
+        const bindings = {
+          page: ui.page,
+          pb: ui.pb,
+          stepIdx: sIdx,
+          stepLen: pbData.steps.length,
+          parLen: step.par.length,
+          spotLen: step.spot.length,
+          f10Same: step.moving.f10Same,
+          pbChips: {},
+          border: {},
+          par: [],
+          spot: [],
+          moving: { detailsEl: null, f9: {}, sameCb: null, f10: {} },
+        };
+        syncRuntime.editorBindings = bindings;
 
         // PB 1~8 Quick Switcher
         const chipBar = makeEl('div', { className: 'pb-chip-bar', role: 'navigation', 'aria-label': `Page ${ui.page} 플레이백` });
@@ -1478,10 +1637,13 @@
             document.createTextNode(`${ui.page}.${String(pb).padStart(2, '0')}`)
           );
           chip.addEventListener('click', () => {
+            flushPendingFieldTimers();
             ui.pb = pb;
             ui.stepIdx = 0;
             render();
+            updatePresence();
           });
+          bindings.pbChips[pb] = chip;
           chipBar.appendChild(chip);
         }
         root.appendChild(chipBar);
@@ -1495,8 +1657,10 @@
             className: `step-tab-btn${idx === ui.stepIdx ? ' active' : ''}`,
           }, `Step ${idx + 1}`);
           sb.addEventListener('click', () => {
+            flushPendingFieldTimers();
             ui.stepIdx = idx;
             render();
+            updatePresence();
           });
           tabsRow.appendChild(sb);
         });
@@ -1504,31 +1668,44 @@
         const actionsRow = makeEl('div', { className: 'step-actions-row' });
         const addEmptyBtn = makeEl('button', { type: 'button' }, '+ 빈 스텝');
         addEmptyBtn.addEventListener('click', () => {
-          pbData.steps.push(createEmptyStep());
-          ui.stepIdx = pbData.steps.length - 1;
-          persistState(`Step ${pbData.steps.length} 추가됨`);
+          const curPb = state.pages[ui.page][ui.pb];
+          curPb.steps.push(createEmptyStep());
+          ui.stepIdx = curPb.steps.length - 1;
+          persistWholePb(`Step ${curPb.steps.length} 추가됨`, pbKey);
           render();
+          updatePresence();
         });
 
         const cloneBtn = makeEl('button', { type: 'button', className: 'primary' }, '+ 현재 스텝 복제');
         cloneBtn.addEventListener('click', () => {
-          const cloned = deepClone(step);
+          const curPb = state.pages[ui.page][ui.pb];
+          const curStep = getActiveStep();
+          const cloned = deepClone(curStep);
           const insertAt = ui.stepIdx + 1;
-          pbData.steps.splice(insertAt, 0, cloned);
+          curPb.steps.splice(insertAt, 0, cloned);
           ui.stepIdx = insertAt;
-          persistState(`Step ${insertAt + 1}(으)로 복제됨`);
+          persistWholePb(`Step ${insertAt + 1}(으)로 복제됨`, pbKey);
           render();
+          updatePresence();
         });
 
         function moveStep(delta) {
+          const curPb = state.pages[ui.page][ui.pb];
           const from = ui.stepIdx;
           const to = from + delta;
-          if (to < 0 || to >= pbData.steps.length) return;
-          const [moved] = pbData.steps.splice(from, 1);
-          pbData.steps.splice(to, 0, moved);
+          if (to < 0 || to >= curPb.steps.length) return;
+          const [moved] = curPb.steps.splice(from, 1);
+          curPb.steps.splice(to, 0, moved);
+          const kFrom = `${ui.page}.${ui.pb}:${from}`;
+          const kTo = `${ui.page}.${ui.pb}:${to}`;
+          const openFrom = movingOpenMap.get(kFrom);
+          const openTo = movingOpenMap.get(kTo);
+          if (openTo === undefined) movingOpenMap.delete(kFrom); else movingOpenMap.set(kFrom, openTo);
+          if (openFrom === undefined) movingOpenMap.delete(kTo); else movingOpenMap.set(kTo, openFrom);
           ui.stepIdx = to;
-          persistState(`Step ${from + 1} → Step ${to + 1} 이동됨`);
+          persistWholePb(`Step ${from + 1} → Step ${to + 1} 이동됨`, pbKey);
           render();
+          updatePresence();
         }
 
         const movePrevBtn = makeEl('button', {
@@ -1559,15 +1736,16 @@
 
         const fScene = makeEl('div', { className: 'field' });
         const sceneId = 'inp-step-scene';
-        fScene.append(makeEl('label', { for: sceneId }, `${ui.page}.${String(ui.pb).padStart(2, '0')} · Step ${ui.stepIdx + 1} 장면명`));
+        fScene.append(makeEl('label', { for: sceneId }, `${pbKey} · Step ${sIdx + 1} 장면명`));
         const sceneInp = makeEl('input', {
           type: 'text', id: sceneId, name: 'scene', value: step.scene,
           placeholder: '예: 오프닝 블루 / 암전 전환', enterkeyhint: 'next',
         });
         sceneInp.addEventListener('input', () => {
           step.scene = sceneInp.value;
-          persistState();
+          persistField(pbKey, sIdx, 'scene', step.scene);
         });
+        bindings.sceneInp = sceneInp;
         fScene.appendChild(sceneInp);
 
         const fMemo = makeEl('div', { className: 'field' });
@@ -1579,8 +1757,9 @@
         });
         memoInp.addEventListener('input', () => {
           step.memo = memoInp.value;
-          persistState();
+          persistField(pbKey, sIdx, 'memo', step.memo);
         });
+        bindings.memoInp = memoInp;
         fMemo.appendChild(memoInp);
         metaCard.append(fScene, fMemo);
 
@@ -1597,7 +1776,8 @@
           value: step.time, placeholder: '예: 2.0',
         });
         timeInp.dataset.filled = step.time !== '' ? 'true' : 'false';
-        attachNumericHandlers(timeInp, (v) => { step.time = v; persistState(); }, true);
+        attachNumericHandlers(timeInp, (v) => { step.time = v; persistField(pbKey, sIdx, 'time', v); }, true);
+        bindings.timeInp = timeInp;
         fTime.appendChild(timeInp);
 
         const fCross = makeEl('div', { className: 'field' });
@@ -1608,7 +1788,8 @@
           value: step.cross, placeholder: '0~100',
         });
         crossInp.dataset.filled = step.cross !== '' ? 'true' : 'false';
-        attachNumericHandlers(crossInp, (v) => { step.cross = v; persistState(); }, false);
+        attachNumericHandlers(crossInp, (v) => { step.cross = v; persistField(pbKey, sIdx, 'cross', v); }, false);
+        bindings.crossInp = crossInp;
         fCross.appendChild(crossInp);
 
         tcBody.append(fTime, fCross);
@@ -1636,14 +1817,19 @@
             value: step.border[key], placeholder: '0~255',
           });
           inp.dataset.filled = step.border[key] !== '' ? 'true' : 'false';
-          attachNumericHandlers(inp, (v) => { step.border[key] = v; persistState(); });
+          attachNumericHandlers(inp, (v) => { step.border[key] = v; persistField(pbKey, sIdx, `border/${key}`, v); });
+          bindings.border[key] = inp;
           cf.append(lb, inp);
           bdrGrid.appendChild(cf);
         }
         const bdrNoteWrap = makeEl('div', { className: 'ch-field' });
         bdrNoteWrap.append(makeEl('label', { for: 'bdr-note' }, '비고'));
         const bdrNote = makeEl('input', { type: 'text', id: 'bdr-note', value: step.border.note, placeholder: '메모' });
-        bdrNote.addEventListener('input', () => { step.border.note = bdrNote.value; persistState(); });
+        bdrNote.addEventListener('input', () => {
+          step.border.note = bdrNote.value;
+          persistField(pbKey, sIdx, 'border/note', step.border.note);
+        });
+        bindings.border.note = bdrNote;
         bdrNoteWrap.appendChild(bdrNote);
         bdrGrid.appendChild(bdrNoteWrap);
         fsBdr.appendChild(bdrGrid);
@@ -1655,19 +1841,21 @@
         step.par.forEach((grp, gIdx) => {
           const gc = makeEl('div', { className: 'group-card' });
           const gHead = makeEl('div', { className: 'group-card-head' });
-          gHead.append(makeEl('span', { className: 'group-badge' }, `파 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`));
+          const badgeEl = makeEl('span', { className: 'group-badge' }, `파 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`);
+          gHead.append(badgeEl);
           if (step.par.length > 1) {
             const delBtn = makeEl('button', { type: 'button', className: 'danger' }, '그룹 삭제');
             delBtn.style.minHeight = '40px';
             delBtn.addEventListener('click', () => {
               step.par.splice(gIdx, 1);
-              persistState();
+              persistWholePb('파 그룹 삭제됨', pbKey);
               render();
             });
             gHead.appendChild(delBtn);
           }
           gc.appendChild(gHead);
 
+          const parBind = { badgeEl, checkboxes: {}, ch: {}, noteInp: null };
           const chkGrid = makeEl('div', { className: 'chk-grid' });
           for (const fid of PAR_IDS) {
             const wrap = makeEl('div', { className: 'chk-item' });
@@ -1680,9 +1868,10 @@
               } else {
                 grp.fixtures = grp.fixtures.filter(x => x !== fid);
               }
-              persistState();
-              gHead.querySelector('.group-badge').textContent = `파 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`;
+              persistField(pbKey, sIdx, `par/${gIdx}/fixtures`, [...grp.fixtures], true);
+              badgeEl.textContent = `파 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`;
             });
+            parBind.checkboxes[fid] = cb;
             wrap.append(cb, makeEl('label', { for: id, className: 'chk-pill' }, `${fid}번`));
             chkGrid.appendChild(wrap);
           }
@@ -1701,7 +1890,8 @@
               value: grp.ch[key], placeholder: '0~255',
             });
             inp.dataset.filled = grp.ch[key] !== '' ? 'true' : 'false';
-            attachNumericHandlers(inp, (v) => { grp.ch[key] = v; persistState(); });
+            attachNumericHandlers(inp, (v) => { grp.ch[key] = v; persistField(pbKey, sIdx, `par/${gIdx}/ch/${key}`, v); });
+            parBind.ch[key] = inp;
             cf.append(lb, inp);
             chGrid.appendChild(cf);
           }
@@ -1711,17 +1901,22 @@
           const gnId = `par-note-${gIdx}`;
           gNoteWrap.append(makeEl('label', { for: gnId }, '그룹 비고'));
           const gnInp = makeEl('input', { type: 'text', id: gnId, value: grp.note, placeholder: '예: 1바텐 좌우 웜톤' });
-          gnInp.addEventListener('input', () => { grp.note = gnInp.value; persistState(); });
+          gnInp.addEventListener('input', () => {
+            grp.note = gnInp.value;
+            persistField(pbKey, sIdx, `par/${gIdx}/note`, grp.note);
+          });
+          parBind.noteInp = gnInp;
           gNoteWrap.appendChild(gnInp);
           gc.appendChild(gNoteWrap);
 
+          bindings.par.push(parBind);
           fsPar.appendChild(gc);
         });
 
         const addParBtn = makeEl('button', { type: 'button' }, '+ 파 그룹 추가 (다른 수치 묶음)');
         addParBtn.addEventListener('click', () => {
           step.par.push(emptyParGroup());
-          persistState();
+          persistWholePb('파 그룹 추가됨', pbKey);
           render();
         });
         fsPar.appendChild(addParBtn);
@@ -1733,13 +1928,14 @@
         step.spot.forEach((grp, gIdx) => {
           const gc = makeEl('div', { className: 'group-card' });
           const gHead = makeEl('div', { className: 'group-card-head' });
-          gHead.append(makeEl('span', { className: 'group-badge' }, `스포트 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`));
+          const badgeEl = makeEl('span', { className: 'group-badge' }, `스포트 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`);
+          gHead.append(badgeEl);
           if (step.spot.length > 1) {
             const delBtn = makeEl('button', { type: 'button', className: 'danger' }, '그룹 삭제');
             delBtn.style.minHeight = '40px';
             delBtn.addEventListener('click', () => {
               step.spot.splice(gIdx, 1);
-              persistState();
+              persistWholePb('스포트 그룹 삭제됨', pbKey);
               render();
             });
             gHead.appendChild(delBtn);
@@ -1759,13 +1955,14 @@
             const qb = makeEl('button', { type: 'button', className: 'quick-btn' }, pLabel);
             qb.addEventListener('click', () => {
               grp.fixtures = [...pIds];
-              persistState();
+              persistField(pbKey, sIdx, `spot/${gIdx}/fixtures`, [...grp.fixtures], true);
               render();
             });
             presets.appendChild(qb);
           }
           gc.appendChild(presets);
 
+          const spotBind = { badgeEl, checkboxes: {}, ch: {}, noteInp: null };
           const chkGrid = makeEl('div', { className: 'chk-grid' });
           for (const fid of SPOT_IDS) {
             const wrap = makeEl('div', { className: 'chk-item' });
@@ -1778,9 +1975,10 @@
               } else {
                 grp.fixtures = grp.fixtures.filter(x => x !== fid);
               }
-              persistState();
-              gHead.querySelector('.group-badge').textContent = `스포트 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`;
+              persistField(pbKey, sIdx, `spot/${gIdx}/fixtures`, [...grp.fixtures], true);
+              badgeEl.textContent = `스포트 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`;
             });
+            spotBind.checkboxes[fid] = cb;
             wrap.append(cb, makeEl('label', { for: id, className: 'chk-pill' }, `${fid}`));
             chkGrid.appendChild(wrap);
           }
@@ -1799,7 +1997,8 @@
               value: grp.ch[key], placeholder: '0~255',
             });
             inp.dataset.filled = grp.ch[key] !== '' ? 'true' : 'false';
-            attachNumericHandlers(inp, (v) => { grp.ch[key] = v; persistState(); });
+            attachNumericHandlers(inp, (v) => { grp.ch[key] = v; persistField(pbKey, sIdx, `spot/${gIdx}/ch/${key}`, v); });
+            spotBind.ch[key] = inp;
             cf.append(lb, inp);
             chGrid.appendChild(cf);
           }
@@ -1809,17 +2008,22 @@
           const gnId = `spot-note-${gIdx}`;
           gNoteWrap.append(makeEl('label', { for: gnId }, '그룹 비고'));
           const gnInp = makeEl('input', { type: 'text', id: gnId, value: grp.note, placeholder: '예: 중앙 인원 집중' });
-          gnInp.addEventListener('input', () => { grp.note = gnInp.value; persistState(); });
+          gnInp.addEventListener('input', () => {
+            grp.note = gnInp.value;
+            persistField(pbKey, sIdx, `spot/${gIdx}/note`, grp.note);
+          });
+          spotBind.noteInp = gnInp;
           gNoteWrap.appendChild(gnInp);
           gc.appendChild(gNoteWrap);
 
+          bindings.spot.push(spotBind);
           fsSpot.appendChild(gc);
         });
 
         const addSpotBtn = makeEl('button', { type: 'button' }, '+ 스포트 그룹 추가 (다른 수치 묶음)');
         addSpotBtn.addEventListener('click', () => {
           step.spot.push(emptySpotGroup());
-          persistState();
+          persistWholePb('스포트 그룹 추가됨', pbKey);
           render();
         });
         fsSpot.appendChild(addSpotBtn);
@@ -1830,13 +2034,14 @@
         fsMov.appendChild(makeEl('legend', {}, '무빙 (0-9, 0-10)'));
 
         const details = makeEl('details', { className: 'moving-details' });
-        const isMovingOpen = movingOpenMap.has(step)
-          ? movingOpenMap.get(step)
+        const isMovingOpen = movingOpenMap.has(movKey)
+          ? movingOpenMap.get(movKey)
           : movingHasData(step.moving);
         if (isMovingOpen) details.open = true;
         details.addEventListener('toggle', () => {
-          movingOpenMap.set(step, details.open);
+          movingOpenMap.set(movKey, details.open);
         });
+        bindings.moving.detailsEl = details;
         details.appendChild(makeEl('summary', {}, '무빙 15개 채널 펼치기 / 접기 (5 PAN ~ 19 디머)'));
 
         const mv9Head = makeEl('div', { className: 'group-badge', style: 'margin:0.5rem 0;' }, '9번 무빙 (3바텐 좌)');
@@ -1855,7 +2060,8 @@
             value: step.moving.f9[key], placeholder: '0~255',
           });
           inp.dataset.filled = step.moving.f9[key] !== '' ? 'true' : 'false';
-          attachNumericHandlers(inp, (v) => { step.moving.f9[key] = v; persistState(); });
+          attachNumericHandlers(inp, (v) => { step.moving.f9[key] = v; persistField(pbKey, sIdx, `moving/f9/${key}`, v); });
+          bindings.moving.f9[key] = inp;
           cf.append(lb, inp);
           mv9Grid.appendChild(cf);
         }
@@ -1866,10 +2072,11 @@
         sameCb.checked = step.moving.f10Same;
         sameCb.addEventListener('change', () => {
           step.moving.f10Same = sameCb.checked;
-          movingOpenMap.set(step, true);
-          persistState();
+          movingOpenMap.set(movKey, true);
+          persistField(pbKey, sIdx, 'moving/f10Same', step.moving.f10Same, true);
           render();
         });
+        bindings.moving.sameCb = sameCb;
         sameRow.append(sameCb, makeEl('label', { for: 'mv10-same' }, '10번 무빙은 9번과 동일'));
         details.appendChild(sameRow);
 
@@ -1888,7 +2095,8 @@
               value: step.moving.f10[key], placeholder: '0~255',
             });
             inp.dataset.filled = step.moving.f10[key] !== '' ? 'true' : 'false';
-            attachNumericHandlers(inp, (v) => { step.moving.f10[key] = v; persistState(); });
+            attachNumericHandlers(inp, (v) => { step.moving.f10[key] = v; persistField(pbKey, sIdx, `moving/f10/${key}`, v); });
+            bindings.moving.f10[key] = inp;
             cf.append(lb, inp);
             mv10Grid.appendChild(cf);
           }
@@ -1903,28 +2111,37 @@
         const footerAct = makeEl('div', { className: 'step-footer-actions' });
         const backBtn = makeEl('button', { type: 'button' }, '← 목차로');
         backBtn.addEventListener('click', () => {
+          flushPendingFieldTimers();
           ui.tab = 'INDEX';
           render();
+          updatePresence();
         });
 
         const delLabel = pbData.steps.length > 1 ? `Step ${ui.stepIdx + 1} 삭제` : '이 스텝 비우기';
         const delStepBtn = makeEl('button', { type: 'button', className: 'danger' }, delLabel);
         delStepBtn.addEventListener('click', () => {
+          const curPbNow = state.pages[ui.page][ui.pb];
+          const curLabel = curPbNow.steps.length > 1 ? `Step ${ui.stepIdx + 1} 삭제` : '이 스텝 비우기';
           openConfirm(
-            delLabel,
-            pbData.steps.length > 1
-              ? `${ui.page}.${String(ui.pb).padStart(2, '0')}의 Step ${ui.stepIdx + 1} 데이터를 삭제할까요?`
-              : `${ui.page}.${String(ui.pb).padStart(2, '0')}의 현재 수치를 전부 비울까요?`,
-            delLabel,
+            curLabel,
+            curPbNow.steps.length > 1
+              ? `${pbKey}의 Step ${ui.stepIdx + 1} 데이터를 삭제할까요?`
+              : `${pbKey}의 현재 수치를 전부 비울까요?`,
+            curLabel,
             () => {
-              if (pbData.steps.length > 1) {
-                pbData.steps.splice(ui.stepIdx, 1);
-                if (ui.stepIdx >= pbData.steps.length) ui.stepIdx = pbData.steps.length - 1;
+              const pbTarget = state.pages[ui.page][ui.pb];
+              if (pbTarget.steps.length > 1) {
+                const delIdx = ui.stepIdx;
+                pbTarget.steps.splice(delIdx, 1);
+                movingOpenMap.delete(`${ui.page}.${ui.pb}:${delIdx}`);
+                if (ui.stepIdx >= pbTarget.steps.length) ui.stepIdx = pbTarget.steps.length - 1;
               } else {
-                pbData.steps[0] = createEmptyStep();
+                movingOpenMap.delete(`${ui.page}.${ui.pb}:0`);
+                pbTarget.steps[0] = createEmptyStep();
               }
-              persistState('삭제됨');
+              persistWholePb('삭제됨', pbKey);
               render();
+              updatePresence();
             }
           );
         });
@@ -1974,8 +2191,8 @@
         try {
           const parsed = JSON.parse(await file.text());
           if (!parsed || !parsed.pages) throw new Error('형식 오류');
-          state = parsed;
-          persistState('JSON 불러오기 완료', 'LOCAL_ONLY');
+          state = normalizeState(parsed);
+          persistLocalBulk('JSON 불러오기 완료');
           syncMetaInputs();
           backupDialog.close();
           render();
@@ -2116,7 +2333,7 @@
 
         state.pages[11][1].steps = [s1];
         state.pages[11][2].steps = [s2a, s2b];
-        persistState('예시 채움 완료', 'LOCAL_ONLY');
+        persistLocalBulk('예시 채움 완료');
         syncMetaInputs();
         backupDialog.close();
         render();
@@ -2128,12 +2345,61 @@
         openConfirm('전체 초기화', '입력된 모든 페이지·스텝 데이터를 삭제할까요?', '전체 초기화', () => {
           state = createInitialState();
           ui = { tab: 'INDEX', page: 11, pb: 1, stepIdx: 0 };
-          persistState('초기화됨', 'LOCAL_ONLY');
+          persistLocalBulk('초기화됨');
           render();
         });
       });
 
-      // Cloud Sync Engine (Google Apps Script + Google Sheets)
+      // Pure-JS UTF-8 SHA-256 (works identically under https:// and file://)
+      function sha256Hex(str) {
+        const K = [
+          0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+          0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+          0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+          0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+          0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+          0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+          0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        ];
+        const H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+        const bytes = new TextEncoder().encode(str);
+        const bitLen = bytes.length * 8;
+        const paddedLen = Math.ceil((bytes.length + 9) / 64) * 64;
+        const buf = new Uint8Array(paddedLen);
+        buf.set(bytes);
+        buf[bytes.length] = 0x80;
+        const view = new DataView(buf.buffer);
+        view.setUint32(paddedLen - 8, Math.floor(bitLen / 0x100000000), false);
+        view.setUint32(paddedLen - 4, bitLen >>> 0, false);
+
+        const W = new Uint32Array(64);
+        const rotr = (n, x) => (x >>> n) | (x << (32 - n));
+        for (let off = 0; off < paddedLen; off += 64) {
+          for (let i = 0; i < 16; i++) W[i] = view.getUint32(off + i * 4, false);
+          for (let i = 16; i < 64; i++) {
+            const s0 = rotr(7, W[i - 15]) ^ rotr(18, W[i - 15]) ^ (W[i - 15] >>> 3);
+            const s1 = rotr(17, W[i - 2]) ^ rotr(19, W[i - 2]) ^ (W[i - 2] >>> 10);
+            W[i] = (W[i - 16] + s0 + W[i - 7] + s1) >>> 0;
+          }
+          let [a, b, c, d, e, f, g, h] = H;
+          for (let i = 0; i < 64; i++) {
+            const S1 = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e);
+            const ch = (e & f) ^ (~e & g);
+            const t1 = (h + S1 + ch + K[i] + W[i]) >>> 0;
+            const S0 = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a);
+            const maj = (a & b) ^ (a & c) ^ (b & c);
+            const t2 = (S0 + maj) >>> 0;
+            h = g; g = f; f = e; e = (d + t1) >>> 0;
+            d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+          }
+          H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+          H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+        }
+        return H.map((x) => x.toString(16).padStart(8, '0')).join('');
+      }
+
+      // Firebase Realtime Database Sync Engine
       function isEditorInputFocused() {
         const el = document.activeElement;
         if (!el) return false;
@@ -2142,7 +2408,64 @@
       }
 
       function anyDialogOpen() {
-        return backupDialog.open || syncDialog.open || conflictDialog.open || confirmDialog.open;
+        return backupDialog.open || syncDialog.open || confirmDialog.open;
+      }
+
+      function setInputIfUnfocused(inp, val, markFilled = false) {
+        if (!inp || document.activeElement === inp) return;
+        const next = String(val ?? '');
+        if (inp.value !== next) inp.value = next;
+        if (markFilled) inp.dataset.filled = next !== '' ? 'true' : 'false';
+      }
+
+      function patchEditorInPlace(step, b) {
+        setInputIfUnfocused(b.sceneInp, step.scene);
+        setInputIfUnfocused(b.memoInp, step.memo);
+        setInputIfUnfocused(b.timeInp, step.time, true);
+        setInputIfUnfocused(b.crossInp, step.cross, true);
+
+        setInputIfUnfocused(b.border.r, step.border.r, true);
+        setInputIfUnfocused(b.border.g, step.border.g, true);
+        setInputIfUnfocused(b.border.b, step.border.b, true);
+        setInputIfUnfocused(b.border.note, step.border.note);
+
+        step.par.forEach((grp, gIdx) => {
+          const pb = b.par[gIdx];
+          if (!pb) return;
+          pb.badgeEl.textContent = `파 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`;
+          for (const fid of PAR_IDS) {
+            const cb = pb.checkboxes[fid];
+            if (cb) cb.checked = grp.fixtures.includes(fid);
+          }
+          for (const [k] of PAR_CHANNELS) {
+            setInputIfUnfocused(pb.ch[k], grp.ch[k], true);
+          }
+          setInputIfUnfocused(pb.noteInp, grp.note);
+        });
+
+        step.spot.forEach((grp, gIdx) => {
+          const sb = b.spot[gIdx];
+          if (!sb) return;
+          sb.badgeEl.textContent = `스포트 그룹 ${gIdx + 1} · 선택: ${fmtFixtureList(grp.fixtures)}`;
+          for (const fid of SPOT_IDS) {
+            const cb = sb.checkboxes[fid];
+            if (cb) cb.checked = grp.fixtures.includes(fid);
+          }
+          for (const [k] of SPOT_CHANNELS) {
+            setInputIfUnfocused(sb.ch[k], grp.ch[k], true);
+          }
+          setInputIfUnfocused(sb.noteInp, grp.note);
+        });
+
+        for (const [k] of MOV_CHANNELS) {
+          setInputIfUnfocused(b.moving.f9[k], step.moving.f9[k], true);
+        }
+        if (b.moving.sameCb) b.moving.sameCb.checked = step.moving.f10Same;
+        if (!step.moving.f10Same) {
+          for (const [k] of MOV_CHANNELS) {
+            setInputIfUnfocused(b.moving.f10[k], step.moving.f10[k], true);
+          }
+        }
       }
 
       document.getElementById('app-main').addEventListener('focusout', () => {
@@ -2155,267 +2478,520 @@
         }, 25);
       });
 
-      function getPayloadForKey(key) {
-        if (key === 'meta') return deepClone(state.meta);
-        const m = /^(11|12|13)\.0([1-8])$/.exec(key);
-        if (!m) return null;
-        return deepClone(state.pages[Number(m[1])][Number(m[2])]);
+      function setStepByRelPath(step, relPath, val) {
+        const parts = relPath.split('/');
+        if (parts.length === 1 && ['scene', 'memo', 'time', 'cross'].includes(parts[0])) {
+          step[parts[0]] = String(val ?? '');
+          return;
+        }
+        if (parts[0] === 'border' && parts.length === 2) {
+          step.border[parts[1]] = String(val ?? '');
+          return;
+        }
+        if ((parts[0] === 'par' || parts[0] === 'spot') && parts.length >= 3) {
+          const gIdx = Number(parts[1]);
+          const grp = step[parts[0]] && step[parts[0]][gIdx];
+          if (!grp) return;
+          if (parts[2] === 'fixtures') grp.fixtures = normalizeFixtures(val);
+          else if (parts[2] === 'note') grp.note = String(val ?? '');
+          else if (parts[2] === 'ch' && parts[3]) grp.ch[parts[3]] = String(val ?? '');
+          return;
+        }
+        if (parts[0] === 'moving') {
+          if (parts[1] === 'f10Same') step.moving.f10Same = Boolean(val);
+          else if ((parts[1] === 'f9' || parts[1] === 'f10') && parts[2]) {
+            step.moving[parts[1]][parts[2]] = String(val ?? '');
+          }
+        }
       }
 
-      function applyRemoteKey(key, payload, version) {
-        if (!payload || typeof payload !== 'object') return false;
-        if (key === 'meta') {
-          state.meta = {
-            title: String(payload.title || ''),
-            owner: String(payload.owner || ''),
-            usbFile: String(payload.usbFile || 'FOX11'),
-          };
-          syncCfg.versions.meta = Number(version || 0);
-          return true;
+      function refreshSyncUiAfterWrite() {
+        if (syncRuntime.pendingFields.size === 0 && syncRuntime.wholePbInFlight.size === 0) {
+          if (syncRuntime.status === 'saving' || syncRuntime.status === 'connecting') {
+            updateSyncBadge('synced');
+          }
+          saveStatusEl.textContent = '실시간 동기화됨';
         }
-        const m = /^(11|12|13)\.0([1-8])$/.exec(key);
-        if (!m) return false;
+      }
+
+      function sanitizePbForRtdb(pbObj) {
+        const clean = deepClone(pbObj);
+        for (const st of clean.steps) {
+          for (const g of st.par) {
+            if (!g.fixtures.length) g.fixtures = null;
+          }
+          for (const g of st.spot) {
+            if (!g.fixtures.length) g.fixtures = null;
+          }
+        }
+        return clean;
+      }
+
+      function queueFieldSync(pbKey, stepIdx, relPath, val, immediate = false) {
+        const fullRelKey = `${pbKey}/${stepIdx}/${relPath}`;
+        const seq = (syncRuntime.fieldSeq[fullRelKey] = (syncRuntime.fieldSeq[fullRelKey] || 0) + 1);
+        syncRuntime.pendingFields.set(fullRelKey, {
+          seq,
+          pbKey,
+          stepIdx,
+          relPath,
+          val: deepClone(val),
+        });
+        if (syncRuntime.fieldTimers.has(fullRelKey)) {
+          clearTimeout(syncRuntime.fieldTimers.get(fullRelKey));
+          syncRuntime.fieldTimers.delete(fullRelKey);
+        }
+        updateSyncBadge('saving');
+        const run = () => flushSingleField(fullRelKey);
+        if (immediate) run();
+        else syncRuntime.fieldTimers.set(fullRelKey, setTimeout(run, 200));
+      }
+
+      function queueMetaFieldSync(field, val) {
+        const fullRelKey = `meta/${field}`;
+        const seq = (syncRuntime.fieldSeq[fullRelKey] = (syncRuntime.fieldSeq[fullRelKey] || 0) + 1);
+        syncRuntime.pendingFields.set(fullRelKey, {
+          seq,
+          isMeta: true,
+          field,
+          val: String(val ?? ''),
+        });
+        if (syncRuntime.fieldTimers.has(fullRelKey)) {
+          clearTimeout(syncRuntime.fieldTimers.get(fullRelKey));
+          syncRuntime.fieldTimers.delete(fullRelKey);
+        }
+        updateSyncBadge('saving');
+        syncRuntime.fieldTimers.set(fullRelKey, setTimeout(() => flushSingleField(fullRelKey), 200));
+      }
+
+      async function flushSingleField(fullRelKey) {
+        if (syncRuntime.fieldTimers.has(fullRelKey)) {
+          clearTimeout(syncRuntime.fieldTimers.get(fullRelKey));
+          syncRuntime.fieldTimers.delete(fullRelKey);
+        }
+        const entry = syncRuntime.pendingFields.get(fullRelKey);
+        if (!entry || !syncRuntime.db || !syncRuntime.mod) return;
+
+        if (!entry.isMeta && !syncRuntime.knownServerPbs.has(entry.pbKey)) {
+          const m = /^(11|12|13)\.0([1-8])$/.exec(entry.pbKey);
+          const pbObj = m ? state.pages[Number(m[1])][Number(m[2])] : null;
+          if (pbObj && pbObj.steps.length > 1) {
+            await syncWholePbToServer(entry.pbKey);
+            return;
+          }
+          syncRuntime.knownServerPbs.add(entry.pbKey);
+        }
+
+        const { ref, update } = syncRuntime.mod;
+        const roomRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}`);
+        const rtdbPath = entry.isMeta
+          ? `meta/${entry.field}`
+          : `pbs/${pbKeyToDbKey(entry.pbKey)}/steps/${entry.stepIdx}/${entry.relPath}`;
+        let wireVal = entry.val;
+        if (!entry.isMeta && entry.relPath.endsWith('/fixtures')) {
+          wireVal = Array.isArray(wireVal) && wireVal.length ? wireVal : null;
+        }
+
+        try {
+          await update(roomRef, { [rtdbPath]: wireVal });
+          if (syncRuntime.pendingFields.get(fullRelKey)?.seq === entry.seq) {
+            syncRuntime.pendingFields.delete(fullRelKey);
+          }
+          refreshSyncUiAfterWrite();
+        } catch (err) {
+          handleWriteError(err);
+        }
+      }
+
+      function flushPendingFieldTimers() {
+        for (const k of [...syncRuntime.fieldTimers.keys()]) {
+          flushSingleField(k);
+        }
+      }
+
+      async function syncWholePbToServer(pbKey) {
+        if (!syncRuntime.db || !syncRuntime.mod) return;
+        const m = /^(11|12|13)\.0([1-8])$/.exec(pbKey);
+        if (!m) return;
         const p = Number(m[1]);
         const pb = Number(m[2]);
-        if (!Array.isArray(payload.steps) || payload.steps.length === 0) return false;
-        state.pages[p][pb] = { steps: payload.steps };
-        syncCfg.versions[key] = Number(version || 0);
+
+        const snapshotSeqs = new Map();
+        const prefix = `${pbKey}/`;
+        for (const [k, v] of syncRuntime.pendingFields.entries()) {
+          if (k.startsWith(prefix)) snapshotSeqs.set(k, v.seq);
+        }
+        for (const k of [...syncRuntime.fieldTimers.keys()]) {
+          if (k.startsWith(prefix)) {
+            clearTimeout(syncRuntime.fieldTimers.get(k));
+            syncRuntime.fieldTimers.delete(k);
+          }
+        }
+
+        syncRuntime.knownServerPbs.add(pbKey);
+        syncRuntime.wholePbInFlight.add(pbKey);
+        updateSyncBadge('saving');
+
+        try {
+          const { ref, set } = syncRuntime.mod;
+          const pbRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}/pbs/${pbKeyToDbKey(pbKey)}`);
+          await set(pbRef, sanitizePbForRtdb(state.pages[p][pb]));
+          for (const [k, oldSeq] of snapshotSeqs.entries()) {
+            if (syncRuntime.pendingFields.get(k)?.seq === oldSeq) {
+              syncRuntime.pendingFields.delete(k);
+            }
+          }
+        } catch (err) {
+          handleWriteError(err);
+        } finally {
+          syncRuntime.wholePbInFlight.delete(pbKey);
+          refreshSyncUiAfterWrite();
+        }
+      }
+
+      function handleWriteError(err) {
+        const msg = String((err && (err.code || err.message)) || err || '');
+        if (/PERMISSION_DENIED/i.test(msg)) {
+          updateSyncBadge('error');
+          setSyncMsg('접속코드(PIN)가 서버 규칙과 다르거나 만료되었습니다.', 'err');
+        } else {
+          updateSyncBadge('offline');
+          saveStatusEl.textContent = '로컬 저장됨 (오프라인)';
+        }
+      }
+
+      function renderPresenceUi() {
+        const peers = syncRuntime.peers;
+        if (!syncPresenceBoxEl) return;
+        if (!peers.length || !syncRuntime.db) {
+          syncPresenceBoxEl.hidden = true;
+          syncPresenceBoxEl.innerHTML = '';
+          return;
+        }
+        syncPresenceBoxEl.hidden = false;
+        syncPresenceBoxEl.innerHTML = '';
+        syncPresenceBoxEl.appendChild(makeEl('strong', { style: 'margin-right:0.25rem;' }, `접속 중 (${peers.length}명):`));
+        for (const peer of peers) {
+          const label = peer.where ? `${peer.name} (${peer.where})` : peer.name;
+          syncPresenceBoxEl.appendChild(makeEl('span', { className: 'presence-chip' }, label));
+        }
+      }
+
+      function getPresenceWhere() {
+        if (ui.tab === 'INDEX') return '목차';
+        return `${getCurrentPbKey()} S${ui.stepIdx + 1}`;
+      }
+
+      function updatePresence() {
+        if (!syncRuntime.db || !syncRuntime.mod || !syncRuntime.connected || !syncRuntime.roomHash) return;
+        const { ref, set, serverTimestamp } = syncRuntime.mod;
+        const presRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}/presence/${clientId}`);
+        set(presRef, {
+          name: (syncCfg.userName || '').trim() || '익명',
+          where: getPresenceWhere(),
+          ts: serverTimestamp(),
+        }).catch(() => {});
+      }
+
+      function hasLocalUserData() {
+        if (state.meta.title || state.meta.owner || (state.meta.usbFile && state.meta.usbFile !== 'FOX11')) return true;
+        return PAGES.some((p) => [1, 2, 3, 4, 5, 6, 7, 8].some((pb) => pbHasData(p, pb)));
+      }
+
+      function mergeGroupArrayInPlace(dstArr, srcArr) {
+        if (!Array.isArray(dstArr) || dstArr.length !== srcArr.length) return false;
+        for (let i = 0; i < srcArr.length; i++) {
+          dstArr[i].fixtures.splice(0, dstArr[i].fixtures.length, ...srcArr[i].fixtures);
+          Object.assign(dstArr[i].ch, srcArr[i].ch);
+          dstArr[i].note = srcArr[i].note;
+        }
         return true;
       }
 
-      function schedulePush() {
-        if (syncRuntime.pushTimer) clearTimeout(syncRuntime.pushTimer);
-        syncRuntime.pushTimer = setTimeout(() => {
-          syncRuntime.pushTimer = null;
-          pushDirtyKeys();
-        }, 1500);
+      function mergeStepInPlace(dst, src) {
+        dst.scene = src.scene;
+        dst.memo = src.memo;
+        dst.time = src.time;
+        dst.cross = src.cross;
+        Object.assign(dst.border, src.border);
+        if (!mergeGroupArrayInPlace(dst.par, src.par)) dst.par = src.par;
+        if (!mergeGroupArrayInPlace(dst.spot, src.spot)) dst.spot = src.spot;
+        Object.assign(dst.moving.f9, src.moving.f9);
+        dst.moving.f10Same = src.moving.f10Same;
+        Object.assign(dst.moving.f10, src.moving.f10);
       }
 
-      async function callSyncApi(action, extraBody = {}) {
-        if (!syncCfg.url || !syncCfg.pin) {
-          throw new Error('서버 URL과 접속코드(PIN)를 입력하세요.');
-        }
-        let resp;
-        try {
-          resp = await fetch(syncCfg.url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({
-              action,
-              pin: syncCfg.pin,
-              updatedBy: (syncCfg.userName || '').trim() || '익명',
-              ...extraBody,
-            }),
-            redirect: 'follow',
-          });
-        } catch {
-          updateSyncBadge('offline');
-          throw new Error('네트워크 연결 오류 (로컬 브라우저에는 안전하게 저장됨)');
-        }
-        try {
-          return await resp.json();
-        } catch {
-          throw new Error('서버 응답을 해석할 수 없습니다 (Apps Script 배포 권한을 확인하세요)');
-        }
-      }
-
-      function openConflictPrompt(pendingInfo) {
-        if (conflictDialog.open) return;
-        if (syncDialog.open) syncDialog.close();
-        syncRuntime.pendingConflict = pendingInfo;
-        const { key, res } = pendingInfo;
-        const who = res.serverUpdatedBy ? `${res.serverUpdatedBy}` : '다른 기기';
-        const myVer = Number(syncCfg.versions[key] || 0);
-        const srvVer = Number(res.serverVersion || 0);
-        const label = key === 'meta' ? '공연 기본 정보' : key;
-        document.getElementById('conflict-desc').textContent =
-          `${label}에서 ${who} 님이 먼저 저장한 변경사항이 있습니다 (서버 v${srvVer} / 내 기준 v${myVer}). 어떤 내용을 유지할까요?`;
-        conflictDialog.showModal();
-      }
-
-      async function saveKeyToServer(key, force = false) {
-        const payload = getPayloadForKey(key);
-        if (!payload) return { ok: true };
-        const res = await callSyncApi('save_key', {
-          key,
-          baseVersion: Number(syncCfg.versions[key] || 0),
-          force,
-          payload,
-        });
-        if (res.ok) {
-          syncCfg.versions[key] = Number(res.version || 0);
-          syncRuntime.dirtyKeys.delete(key);
-          syncRuntime.conflictedKeys.delete(key);
-          saveSyncCfg();
-          return { ok: true };
-        }
-        if (res.error === 'INVALID_PIN') {
-          updateSyncBadge('error');
-          setSyncMsg(res.message || '접속코드(PIN)가 올바르지 않습니다.', 'err');
-          return { ok: false, stop: true, msg: res.message || '접속코드 오류' };
-        }
-        if (res.error === 'CONFLICT') {
-          syncRuntime.conflictedKeys.add(key);
-          updateSyncBadge('conflict');
-          openConflictPrompt({ mode: 'single', key, res });
-          return { ok: false, stop: true, conflict: true };
-        }
-        throw new Error(res.message || res.error || '서버 저장 실패');
-      }
-
-      async function pushDirtyKeys({ includeConflicted = false } = {}) {
-        if (!isSyncConfigured() || syncRuntime.isBusy) return false;
-        const keys = [...syncRuntime.dirtyKeys].filter(k => includeConflicted || !syncRuntime.conflictedKeys.has(k));
-        if (!keys.length) return true;
-
-        syncRuntime.isBusy = true;
-        updateSyncBadge('syncing');
-        try {
-          for (const key of keys) {
-            const r = await saveKeyToServer(key, false);
-            if (!r.ok) return false;
+      function mergePbInPlace(dstPb, nextPb) {
+        if (!dstPb || !Array.isArray(dstPb.steps) || dstPb.steps.length !== nextPb.steps.length) {
+          if (dstPb && typeof dstPb === 'object') {
+            dstPb.steps = nextPb.steps;
+            return dstPb;
           }
-          if (syncRuntime.dirtyKeys.size === 0 && syncRuntime.conflictedKeys.size === 0) {
-            updateSyncBadge('synced');
-            saveStatusEl.textContent = '클라우드 저장됨';
-            setSyncMsg('서버와 동기화되었습니다.', 'ok');
-          }
-          return true;
-        } catch (err) {
-          if (syncRuntime.status !== 'offline') updateSyncBadge('error');
-          setSyncMsg(err.message || '동기화 중 오류가 발생했습니다.', 'err');
-          return false;
-        } finally {
-          syncRuntime.isBusy = false;
+          return nextPb;
         }
+        for (let i = 0; i < nextPb.steps.length; i++) {
+          mergeStepInPlace(dstPb.steps[i], nextPb.steps[i]);
+        }
+        return dstPb;
       }
 
-      async function pullFromServer({ silent = false, includeDirtyOverride = false } = {}) {
-        if (!isSyncConfigured()) return false;
-        if (syncRuntime.isBusy && silent) return false;
+      function applyRemoteSnapshot(rawRoom) {
+        const room = (rawRoom && typeof rawRoom === 'object') ? rawRoom : {};
+        const remotePbs = (room.pbs && typeof room.pbs === 'object') ? room.pbs : {};
+        const remotePresence = (room.presence && typeof room.presence === 'object') ? room.presence : {};
 
-        syncRuntime.isBusy = true;
-        if (!silent) updateSyncBadge('syncing');
-        try {
-          const res = await callSyncApi('pull');
-          if (!res.ok) {
-            if (res.error === 'INVALID_PIN') {
-              updateSyncBadge('error');
-              setSyncMsg(res.message || '접속코드(PIN)가 올바르지 않습니다.', 'err');
-            } else {
-              updateSyncBadge('error');
-              setSyncMsg(res.message || res.error || '불러오기 실패', 'err');
-            }
-            return false;
+        syncRuntime.peers = Object.entries(remotePresence)
+          .filter(([, v]) => v && typeof v === 'object')
+          .map(([id, v]) => ({
+            id,
+            name: String(v.name || '익명'),
+            where: String(v.where || ''),
+          }));
+        renderPresenceUi();
+
+        if (room.meta && typeof room.meta === 'object') {
+          const nextMeta = normalizeMeta(room.meta);
+          for (const f of ['title', 'owner', 'usbFile']) {
+            const p = syncRuntime.pendingFields.get(`meta/${f}`);
+            if (p) nextMeta[f] = p.val;
           }
+          state.meta = nextMeta;
+        }
 
-          const items = (res.items && typeof res.items === 'object') ? res.items : {};
-          const itemKeys = Object.keys(items);
-          let updatedCount = 0;
+        for (const p of PAGES) {
+          for (let pb = 1; pb <= 8; pb++) {
+            const pbKey = `${p}.${String(pb).padStart(2, '0')}`;
+            const dbKey = pbKeyToDbKey(pbKey);
+            if (syncRuntime.wholePbInFlight.has(pbKey)) continue;
+            if (!Object.hasOwn(remotePbs, dbKey) || remotePbs[dbKey] == null) continue;
 
-          for (const key of itemKeys) {
-            if (!includeDirtyOverride && (syncRuntime.dirtyKeys.has(key) || syncRuntime.conflictedKeys.has(key))) continue;
-            const entry = items[key];
-            if (!entry || !entry.payload) continue;
-            const serverVer = Number(entry.version || 0);
-            const localVer = Number(syncCfg.versions[key] || 0);
-            if (serverVer > localVer || !Object.hasOwn(syncCfg.versions, key)) {
-              if (applyRemoteKey(key, entry.payload, serverVer)) {
-                updatedCount++;
+            syncRuntime.knownServerPbs.add(pbKey);
+            const nextPb = normalizePb(remotePbs[dbKey]);
+            const prefix = `${pbKey}/`;
+            for (const [k, entry] of syncRuntime.pendingFields.entries()) {
+              if (!k.startsWith(prefix)) continue;
+              if (nextPb.steps[entry.stepIdx]) {
+                setStepByRelPath(nextPb.steps[entry.stepIdx], entry.relPath, entry.val);
               }
             }
+            state.pages[p][pb] = mergePbInPlace(state.pages[p][pb], nextPb);
           }
-
-          saveSyncCfg();
-          if (updatedCount > 0) {
-            saveStateLocalOnly(`클라우드 반영 (${updatedCount}건)`);
-            if (silent && isEditorInputFocused()) {
-              syncRuntime.deferredRender = true;
-              updateSyncBadge('synced', '클라우드 · 새 데이터');
-            } else {
-              render();
-              syncMetaInputs();
-            }
-          }
-
-          if (syncRuntime.conflictedKeys.size) {
-            updateSyncBadge('conflict');
-          } else if (syncRuntime.dirtyKeys.size) {
-            updateSyncBadge('dirty');
-          } else if (!syncRuntime.deferredRender) {
-            updateSyncBadge('synced');
-          }
-
-          if (!silent) {
-            if (itemKeys.length === 0) {
-              setSyncMsg('서버 연결됨 (서버가 비어 있습니다. 기존 작업이 있다면 "로컬 전체 올리기"를 누르세요)', 'ok');
-            } else {
-              setSyncMsg(`연결 · 동기화 완료 (전체 ${itemKeys.length}개 항목 중 ${updatedCount}건 반영)`, 'ok');
-            }
-          }
-          return true;
-        } catch (err) {
-          if (syncRuntime.status !== 'offline') updateSyncBadge('error');
-          if (!silent) setSyncMsg(err.message || '불러오기 중 오류가 발생했습니다.', 'err');
-          return false;
-        } finally {
-          syncRuntime.isBusy = false;
         }
-      }
 
-      async function pushAllToServer(force = false) {
-        if (!isSyncConfigured() || syncRuntime.isBusy) {
-          if (!isSyncConfigured()) setSyncMsg('서버 URL과 접속코드(PIN)를 먼저 입력하세요.', 'err');
+        saveStateLocalOnly();
+
+        const metaForm = document.getElementById('meta-form');
+        if (!metaForm.contains(document.activeElement)) {
+          syncMetaInputs();
+        }
+
+        if (ui.tab === 'INDEX') {
+          render();
           return;
         }
-        syncRuntime.isBusy = true;
-        updateSyncBadge('syncing');
+
+        const curPbData = state.pages[ui.page][ui.pb];
+        if (ui.stepIdx >= curPbData.steps.length) ui.stepIdx = curPbData.steps.length - 1;
+        if (ui.stepIdx < 0) ui.stepIdx = 0;
+        const curStep = curPbData.steps[ui.stepIdx];
+        const b = syncRuntime.editorBindings;
+
+        if (b && b.page === ui.page) {
+          for (let pb = 1; pb <= 8; pb++) {
+            if (b.pbChips[pb]) b.pbChips[pb].classList.toggle('filled', pbHasData(ui.page, pb));
+          }
+        }
+
+        const sameStruct = Boolean(
+          b &&
+          b.page === ui.page &&
+          b.pb === ui.pb &&
+          b.stepIdx === ui.stepIdx &&
+          b.stepLen === curPbData.steps.length &&
+          b.parLen === curStep.par.length &&
+          b.spotLen === curStep.spot.length &&
+          b.f10Same === curStep.moving.f10Same
+        );
+
+        if (sameStruct) {
+          patchEditorInPlace(curStep, b);
+        } else if (!isEditorInputFocused()) {
+          render();
+        } else {
+          syncRuntime.deferredRender = true;
+          updateSyncBadge(syncRuntime.status, '실시간 · 구조 변경');
+        }
+      }
+
+      async function teardownFirebase() {
+        for (const u of syncRuntime.unsubs) {
+          try { if (typeof u === 'function') u(); } catch {}
+        }
+        syncRuntime.unsubs = [];
+        for (const t of syncRuntime.fieldTimers.values()) clearTimeout(t);
+        syncRuntime.fieldTimers.clear();
+        syncRuntime.pendingFields.clear();
+        syncRuntime.wholePbInFlight.clear();
+        syncRuntime.knownServerPbs.clear();
+        syncRuntime.peers = [];
+        syncRuntime.connected = false;
+        syncRuntime.hasReceivedSnapshot = false;
+
+        if (syncRuntime.db && syncRuntime.mod && syncRuntime.roomHash) {
+          try {
+            const { ref, remove } = syncRuntime.mod;
+            await remove(ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}/presence/${clientId}`));
+          } catch {}
+        }
+        if (syncRuntime.app && syncRuntime.mod && typeof syncRuntime.mod.deleteApp === 'function') {
+          try { await syncRuntime.mod.deleteApp(syncRuntime.app); } catch {}
+        }
+        syncRuntime.app = null;
+        syncRuntime.db = null;
+        syncRuntime.roomHash = '';
+        renderPresenceUi();
+      }
+
+      async function loadFirebaseModules() {
+        if (window.__FOX_RTDB_PROVIDER__) {
+          syncRuntime.mod = window.__FOX_RTDB_PROVIDER__;
+          return syncRuntime.mod;
+        }
+        if (syncRuntime.mod) return syncRuntime.mod;
+        const [appMod, dbMod] = await Promise.all([
+          import('https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js'),
+          import('https://www.gstatic.com/firebasejs/13.4.0/firebase-database.js'),
+        ]);
+        syncRuntime.mod = { ...appMod, ...dbMod };
+        return syncRuntime.mod;
+      }
+
+      async function connectToFirebase({ fromUserAction = false } = {}) {
+        syncCfg.url = (syncCfg.url || '').trim().replace(/\/+$/, '');
+        syncCfg.pin = (syncCfg.pin || '').trim();
+        syncCfg.userName = (syncCfg.userName || '').trim();
+        saveSyncCfg();
+
+        if (!/^https:\/\/[a-zA-Z0-9.-]+/.test(syncCfg.url) || !syncCfg.pin) {
+          if (fromUserAction) {
+            setSyncMsg('Firebase Database URL(https://...)과 접속코드(PIN)를 모두 입력하세요.', 'err');
+          }
+          return false;
+        }
+
+        await teardownFirebase();
+        updateSyncBadge('connecting');
+        setSyncMsg('Firebase 실시간 서버에 연결 중...', '');
+
+        let mod;
         try {
-          const items = {
-            meta: { baseVersion: Number(syncCfg.versions.meta || 0), payload: deepClone(state.meta) },
-          };
-          for (const p of PAGES) {
-            for (let pb = 1; pb <= 8; pb++) {
-              const key = `${p}.${String(pb).padStart(2, '0')}`;
-              if (pbHasData(p, pb) || Number(syncCfg.versions[key] || 0) > 0) {
-                items[key] = {
-                  baseVersion: Number(syncCfg.versions[key] || 0),
-                  payload: deepClone(state.pages[p][pb]),
-                };
-              }
-            }
-          }
-          const res = await callSyncApi('push_all', { items, force });
-          if (res.ok) {
-            const saved = res.items || {};
-            for (const [k, info] of Object.entries(saved)) {
-              syncCfg.versions[k] = Number(info.version || 0);
-            }
-            syncRuntime.dirtyKeys.clear();
-            syncRuntime.conflictedKeys.clear();
-            saveSyncCfg();
-            updateSyncBadge('synced');
-            saveStatusEl.textContent = '전체 업로드 완료';
-            setSyncMsg(`로컬 데이터 ${Object.keys(saved).length}개 항목을 서버에 올렸습니다.`, 'ok');
-            return;
-          }
-          if (res.error === 'INVALID_PIN') {
-            updateSyncBadge('error');
-            setSyncMsg(res.message || '접속코드(PIN)가 올바르지 않습니다.', 'err');
-            return;
-          }
-          if (res.error === 'CONFLICT') {
-            updateSyncBadge('conflict');
-            if (syncDialog.open) syncDialog.close();
-            openConflictPrompt({ mode: 'push_all', key: res.key, res });
-            return;
-          }
-          throw new Error(res.message || res.error || '전체 업로드 실패');
+          mod = await loadFirebaseModules();
+        } catch {
+          updateSyncBadge('offline');
+          setSyncMsg('실시간 SDK를 불러오지 못했습니다 (오프라인 상태에서도 로컬 저장은 유지됩니다).', 'err');
+          return false;
+        }
+
+        const roomHash = sha256Hex(`fox512s:${syncCfg.pin}`);
+        let app;
+        try {
+          app = mod.initializeApp({ databaseURL: syncCfg.url }, `fox_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
         } catch (err) {
-          if (syncRuntime.status !== 'offline') updateSyncBadge('error');
-          setSyncMsg(err.message || '전체 업로드 중 오류가 발생했습니다.', 'err');
-        } finally {
-          syncRuntime.isBusy = false;
+          updateSyncBadge('error');
+          setSyncMsg(`Database URL 형식이 올바르지 않습니다: ${err?.message || err}`, 'err');
+          return false;
+        }
+
+        const db = mod.getDatabase(app);
+        syncRuntime.app = app;
+        syncRuntime.db = db;
+        syncRuntime.roomHash = roomHash;
+
+        const connRef = mod.ref(db, '.info/connected');
+        const presRef = mod.ref(db, `rooms/${roomHash}/presence/${clientId}`);
+        const roomRef = mod.ref(db, `rooms/${roomHash}`);
+
+        const unsubConn = mod.onValue(connRef, (snap) => {
+          const isConn = Boolean(snap && snap.val());
+          syncRuntime.connected = isConn;
+          if (isConn) {
+            try {
+              const disc = mod.onDisconnect(presRef);
+              if (disc && typeof disc.remove === 'function') disc.remove();
+            } catch {}
+            updatePresence();
+            if (syncRuntime.hasReceivedSnapshot) updateSyncBadge('synced');
+          } else if (syncRuntime.hasReceivedSnapshot) {
+            updateSyncBadge('offline');
+          }
+        });
+
+        let firstSnapHandled = false;
+        const unsubRoom = mod.onValue(roomRef, (snap) => {
+          const val = snap ? snap.val() : null;
+          const hadRemoteData = Boolean(val && typeof val === 'object' && (val.meta || (val.pbs && Object.keys(val.pbs).length)));
+          const localFilledBefore = !firstSnapHandled && hasLocalUserData();
+          firstSnapHandled = true;
+          syncRuntime.hasReceivedSnapshot = true;
+
+          applyRemoteSnapshot(val);
+          updateSyncBadge('synced');
+          saveStatusEl.textContent = '실시간 동기화됨';
+
+          if (!hadRemoteData && localFilledBefore) {
+            setSyncMsg('연결되었습니다(서버가 비어 있음). 이 기기의 기존 데이터를 올리려면 "로컬 전체 올리기"를 누르세요.', 'ok');
+          } else {
+            setSyncMsg('실시간 동기화 연결 완료 (여러 기기 동시 편집 활성)', 'ok');
+            if (fromUserAction && syncDialog.open) {
+              syncDialog.close();
+            }
+          }
+        }, async (err) => {
+          const codeStr = String((err && (err.code || err.message)) || err || '');
+          await teardownFirebase();
+          updateSyncBadge('error');
+          if (/PERMISSION_DENIED/i.test(codeStr)) {
+            setSyncMsg('접속코드(PIN)가 올바르지 않거나 DB 보안 규칙에서 거부되었습니다.', 'err');
+          } else {
+            setSyncMsg(`연결 오류: ${codeStr}`, 'err');
+          }
+        });
+
+        syncRuntime.unsubs.push(unsubConn, unsubRoom);
+        return true;
+      }
+
+      async function pushAllToFirebase() {
+        if (!syncRuntime.db || !syncRuntime.mod || !syncRuntime.roomHash) {
+          setSyncMsg('먼저 Firebase 서버에 연결하세요.', 'err');
+          return;
+        }
+        flushPendingFieldTimers();
+        updateSyncBadge('saving');
+        const pbsPayload = {};
+        let count = 0;
+        for (const p of PAGES) {
+          for (let pb = 1; pb <= 8; pb++) {
+            const pbKey = `${p}.${String(pb).padStart(2, '0')}`;
+            if (pbHasData(p, pb) || syncRuntime.knownServerPbs.has(pbKey)) {
+              pbsPayload[pbKeyToDbKey(pbKey)] = sanitizePbForRtdb(state.pages[p][pb]);
+              syncRuntime.knownServerPbs.add(pbKey);
+              count++;
+            }
+          }
+        }
+        try {
+          const { ref, update } = syncRuntime.mod;
+          const roomRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}`);
+          await update(roomRef, {
+            meta: normalizeMeta(state.meta),
+            pbs: Object.keys(pbsPayload).length ? pbsPayload : null,
+          });
+          updateSyncBadge('synced');
+          saveStatusEl.textContent = '전체 업로드 완료';
+          setSyncMsg(`현재 기기 데이터(메타 + ${count}개 PB)를 실시간 DB에 반영했습니다.`, 'ok');
+        } catch (err) {
+          handleWriteError(err);
         }
       }
 
@@ -2423,171 +2999,90 @@
       document.getElementById('sync-form').addEventListener('input', (e) => {
         const t = e.target;
         if (!t.name) return;
-        const val = t.name === 'url' ? t.value.trim() : t.value;
-        if (t.name === 'url' && val !== syncCfg.url) {
-          syncCfg.versions = {};
-        }
+        const val = t.name === 'url' ? t.value.trim().replace(/\/+$/, '') : t.value;
         syncCfg[t.name] = val;
         saveSyncCfg();
+        if (t.name === 'userName') updatePresence();
       });
 
-      document.getElementById('btn-sync-connect').addEventListener('click', async () => {
-        syncCfg.url = document.getElementById('sync-url').value.trim();
+      document.getElementById('btn-sync-connect').addEventListener('click', () => {
+        syncCfg.url = document.getElementById('sync-url').value.trim().replace(/\/+$/, '');
         syncCfg.pin = document.getElementById('sync-pin').value.trim();
         syncCfg.userName = document.getElementById('sync-user').value.trim();
         saveSyncCfg();
-        if (!isSyncConfigured()) {
-          setSyncMsg('서버 URL과 어실극 접속코드(PIN)를 모두 입력하세요.', 'err');
-          return;
-        }
-        await pullFromServer({ silent: false });
-      });
-
-      document.getElementById('btn-sync-now').addEventListener('click', async () => {
-        if (!isSyncConfigured()) {
-          setSyncMsg('먼저 서버 URL과 접속코드(PIN)를 입력하고 연결하세요.', 'err');
-          return;
-        }
-        if (syncRuntime.pushTimer) {
-          clearTimeout(syncRuntime.pushTimer);
-          syncRuntime.pushTimer = null;
-        }
-        const pushed = await pushDirtyKeys({ includeConflicted: true });
-        if (pushed) {
-          await pullFromServer({ silent: false });
-        }
+        connectToFirebase({ fromUserAction: true });
       });
 
       document.getElementById('btn-sync-push-all').addEventListener('click', () => {
-        if (!isSyncConfigured()) {
-          setSyncMsg('먼저 서버 URL과 접속코드(PIN)를 입력하고 연결하세요.', 'err');
+        if (!syncRuntime.db) {
+          setSyncMsg('먼저 서버 URL과 접속코드(PIN)를 입력하고 "연결"을 누르세요.', 'err');
           return;
         }
         if (syncDialog.open) syncDialog.close();
         openConfirm(
           '로컬 전체 올리기',
-          '현재 기기에 있는 공연 정보와 모든 입력 PB 데이터를 서버로 업로드할까요?',
+          '현재 기기에 있는 공연 정보와 입력 PB 데이터를 실시간 서버로 덮어쓸까요?',
           '서버에 올리기',
           () => {
-            pushAllToServer(false);
+            pushAllToFirebase();
           }
         );
       });
 
       document.getElementById('btn-sync-copy-link').addEventListener('click', async () => {
-        const rawUrl = document.getElementById('sync-url').value.trim() || syncCfg.url;
+        const rawUrl = (document.getElementById('sync-url').value.trim() || syncCfg.url).replace(/\/+$/, '');
         if (!rawUrl) {
-          setSyncMsg('공유 링크를 만들 서버 URL을 먼저 입력하세요.', 'err');
+          setSyncMsg('공유 링크를 만들 Firebase Database URL을 먼저 입력하세요.', 'err');
           return;
         }
         const base = (location.origin && location.origin !== 'null')
           ? `${location.origin}${location.pathname}`
           : location.href.split('?')[0];
-        const shareUrl = `${base}?sync=${encodeURIComponent(rawUrl)}`;
+        const cleanDefault = DEFAULT_DB_URL.replace(/\/+$/, '');
+        const shareUrl = (cleanDefault && rawUrl === cleanDefault)
+          ? base
+          : `${base}?fb=${encodeURIComponent(rawUrl)}`;
         try {
           await navigator.clipboard.writeText(shareUrl);
-          setSyncMsg('팀원 공유 링크를 복사했습니다 (접속코드 PIN은 별도 전달).', 'ok');
+          setSyncMsg('공유 링크를 복사했습니다 (접속코드 PIN은 별도 전달).', 'ok');
         } catch {
           setSyncMsg(`공유 링크: ${shareUrl}`, 'ok');
         }
       });
 
-      document.getElementById('btn-sync-disconnect').addEventListener('click', () => {
-        if (syncRuntime.pushTimer) {
-          clearTimeout(syncRuntime.pushTimer);
-          syncRuntime.pushTimer = null;
-        }
-        syncCfg = { url: '', pin: '', userName: syncCfg.userName || '', versions: {} };
-        syncRuntime.dirtyKeys.clear();
-        syncRuntime.conflictedKeys.clear();
+      document.getElementById('btn-sync-disconnect').addEventListener('click', async () => {
+        await teardownFirebase();
+        syncCfg = { url: DEFAULT_DB_URL.replace(/\/+$/, ''), pin: '', userName: syncCfg.userName || '' };
         saveSyncCfg();
         syncSetupInputs();
         updateSyncBadge('local');
-        setSyncMsg('클라우드 연동을 해제했습니다. 현재 기기의 데이터는 그대로 유지됩니다.', '');
+        setSyncMsg('실시간 동기화를 해제했습니다. 현재 기기의 데이터는 그대로 유지됩니다.', '');
       });
 
-      conflictDialog.addEventListener('close', async () => {
-        const choice = conflictDialog.returnValue;
-        conflictDialog.returnValue = '';
-        const pending = syncRuntime.pendingConflict;
-        syncRuntime.pendingConflict = null;
-        if (!pending) return;
-
-        const { mode, key, res } = pending;
-        if (choice === 'pull_server') {
-          if (res.serverPayload) {
-            applyRemoteKey(key, res.serverPayload, res.serverVersion);
-          } else {
-            syncCfg.versions[key] = Number(res.serverVersion || 0);
-          }
-          syncRuntime.dirtyKeys.delete(key);
-          syncRuntime.conflictedKeys.delete(key);
-          saveStateLocalOnly('서버 최신 반영됨');
-          saveSyncCfg();
-          updateSyncBadge(syncRuntime.dirtyKeys.size ? 'dirty' : 'synced');
-          render();
-          syncMetaInputs();
-          if (syncRuntime.dirtyKeys.size) await pushDirtyKeys();
-        } else if (choice === 'force_local') {
-          if (mode === 'push_all') {
-            await pushAllToServer(true);
-          } else {
-            syncRuntime.isBusy = true;
-            updateSyncBadge('syncing');
-            try {
-              const r = await saveKeyToServer(key, true);
-              if (r.ok && syncRuntime.dirtyKeys.size === 0) {
-                updateSyncBadge('synced');
-                saveStatusEl.textContent = '내 내용으로 덮어씀';
-              }
-            } catch (err) {
-              updateSyncBadge('error');
-              setSyncMsg(err.message || '덮어쓰기 실패', 'err');
-            } finally {
-              syncRuntime.isBusy = false;
-            }
-            if (syncRuntime.dirtyKeys.size) await pushDirtyKeys();
-          }
-        }
-      });
-
-      window.addEventListener('online', () => {
-        if (isSyncConfigured()) {
-          if (syncRuntime.dirtyKeys.size) pushDirtyKeys();
-          else pullFromServer({ silent: true });
-        }
-      });
-
-      setInterval(() => {
-        if (!isSyncConfigured() || document.hidden || anyDialogOpen() || syncRuntime.isBusy) return;
-        pullFromServer({ silent: true });
-      }, 10000);
-
-      // URL ?sync=... parameter prefill
+      // URL ?fb=... parameter or DEFAULT_DB_URL prefill
       const urlParams = new URLSearchParams(window.location.search);
-      const syncParam = urlParams.get('sync');
-      let shouldOpenSyncOnLoad = false;
-      if (syncParam && /^https:\/\/script\.google\.com\/.+\/exec(\?.*)?$/.test(syncParam.trim())) {
-        const cleanUrl = syncParam.trim();
-        if (syncCfg.url !== cleanUrl) {
-          syncCfg.url = cleanUrl;
-          syncCfg.versions = {};
+      const fbParam = (urlParams.get('fb') || '').trim().replace(/\/+$/, '');
+      if (fbParam && /^https:\/\/[a-zA-Z0-9.-]+/.test(fbParam)) {
+        if (syncCfg.url !== fbParam) {
+          syncCfg.url = fbParam;
           saveSyncCfg();
         }
-        if (!syncCfg.pin) shouldOpenSyncOnLoad = true;
+      } else if (!syncCfg.url && DEFAULT_DB_URL) {
+        syncCfg.url = DEFAULT_DB_URL.replace(/\/+$/, '');
+        saveSyncCfg();
       }
+
+      const shouldOpenSyncOnLoad = Boolean((fbParam || DEFAULT_DB_URL) && syncCfg.url && !syncCfg.pin);
 
       render();
       if (isSyncConfigured()) {
-        updateSyncBadge('syncing');
-        setSyncMsg('서버에 연결되어 있습니다. 10초마다 자동 동기화됩니다.', 'ok');
-        pullFromServer({ silent: true });
+        connectToFirebase({ fromUserAction: false });
       } else {
         updateSyncBadge('local');
       }
       if (shouldOpenSyncOnLoad) {
         syncSetupInputs();
-        setSyncMsg('팀 공유 링크로 접속했습니다. 접속코드(PIN)와 내 이름을 입력한 뒤 "연결 · 불러오기"를 누르세요.', 'warn');
+        setSyncMsg('실시간 동기화 링크로 접속했습니다. 접속코드(PIN)와 내 이름을 입력한 뒤 "연결"을 누르세요.', 'warn');
         syncDialog.showModal();
       }
     })();
