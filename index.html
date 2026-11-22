@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>어의소극장 FOX 512s 조명 기록기</title>
+  <link rel="icon" href="data:," />
   <style>
     :root {
       --bg: #f8fafc;
@@ -754,6 +755,20 @@
       font-weight: 800;
     }
 
+    .ch-field input[aria-invalid="true"],
+    .ch-field input:user-invalid {
+      background: #fef2f2;
+      border: 1.5px solid #dc2626;
+      color: #991b1b;
+      box-shadow: none;
+    }
+
+    .ch-field:has(input[aria-invalid="true"]) label,
+    .ch-field:has(input:user-invalid) label {
+      color: #b91c1c;
+      font-weight: 800;
+    }
+
     /* Moving details */
     details.moving-details summary {
       cursor: pointer;
@@ -1369,6 +1384,7 @@
         deferredRender: false,
         connected: false,
         hasReceivedSnapshot: false,
+        hasLocalBulkPending: false,
       };
 
       function toArrayLike(v) {
@@ -1585,6 +1601,7 @@
       function persistLocalBulk(msg = '자동 저장됨') {
         saveStateLocalOnly(msg);
         if (!isSyncConfigured()) return;
+        if (syncRuntime.db) syncRuntime.hasLocalBulkPending = true;
         updateSyncBadge(syncRuntime.status, '실시간 · 전체 반영 필요');
         setSyncMsg('로컬 데이터가 크게 변경되었습니다. 서버에 반영하려면 아래 "로컬 전체 올리기"를 누르세요.', 'warn');
       }
@@ -2877,7 +2894,7 @@
                 }
               });
               const m9 = MOV_CHANNELS.filter(([k]) => st.moving.f9[k] !== '').map(([k, lbl, ch]) => `${ch}${lbl}:${st.moving.f9[k]}`).join(' ');
-              if (m9) rows.push([pbCode, sNo, st.scene, st.memo, st.time, st.cross, '무빙', '9', m9, '']);
+              if (m9) rows.push([pbCode, sNo, st.scene, st.memo, st.time, st.cross, '무빙', st.moving.f10Same ? '9, 10' : '9', m9, '']);
               if (!st.moving.f10Same) {
                 const m10 = MOV_CHANNELS.filter(([k]) => st.moving.f10[k] !== '').map(([k, lbl, ch]) => `${ch}${lbl}:${st.moving.f10[k]}`).join(' ');
                 if (m10) rows.push([pbCode, sNo, st.scene, st.memo, st.time, st.cross, '무빙', '10', m10, '']);
@@ -3152,6 +3169,10 @@
 
       function refreshSyncUiAfterWrite() {
         if (syncRuntime.pendingFields.size === 0 && syncRuntime.wholePbInFlight.size === 0) {
+          if (syncRuntime.hasLocalBulkPending) {
+            updateSyncBadge(syncRuntime.status, '실시간 · 전체 반영 필요');
+            return;
+          }
           if (syncRuntime.status === 'saving' || syncRuntime.status === 'connecting') {
             updateSyncBadge('synced');
           }
@@ -3398,6 +3419,7 @@
             where: String(v.where || ''),
           }));
         renderPresenceUi();
+        if (syncRuntime.hasLocalBulkPending) return;
 
         const nextMeta = normalizeMeta(room.meta);
         for (const f of ['title', 'owner', 'usbFile']) {
@@ -3507,6 +3529,7 @@
         syncRuntime.peers = [];
         syncRuntime.connected = false;
         syncRuntime.hasReceivedSnapshot = false;
+        syncRuntime.hasLocalBulkPending = false;
 
         const prevRoomPath = syncRuntime.roomPath;
         if (syncRuntime.db && syncRuntime.mod && prevRoomPath) {
@@ -3601,7 +3624,9 @@
               if (disc && typeof disc.remove === 'function') disc.remove();
             } catch {}
             updatePresence();
-            if (syncRuntime.hasReceivedSnapshot) updateSyncBadge('synced');
+            if (syncRuntime.hasReceivedSnapshot) {
+              updateSyncBadge('synced', syncRuntime.hasLocalBulkPending ? '실시간 · 전체 반영 필요' : '');
+            }
           } else if (syncRuntime.hasReceivedSnapshot) {
             updateSyncBadge('offline');
           }
@@ -3614,6 +3639,10 @@
           syncRuntime.hasReceivedSnapshot = true;
 
           applyRemoteSnapshot(val);
+          if (syncRuntime.hasLocalBulkPending) {
+            updateSyncBadge(syncRuntime.status, '실시간 · 전체 반영 필요');
+            return;
+          }
           updateSyncBadge('synced');
           saveStatusEl.textContent = '실시간 동기화됨';
 
@@ -3668,6 +3697,7 @@
             meta: normalizeMeta(state.meta),
             pbs: Object.keys(pbsPayload).length ? pbsPayload : null,
           });
+          syncRuntime.hasLocalBulkPending = false;
           updateSyncBadge('synced');
           saveStatusEl.textContent = '전체 업로드 완료';
           setSyncMsg(`현재 기기 데이터(메타 + ${count}개 PB)를 실시간 DB에 반영했습니다.`, 'ok');
