@@ -940,6 +940,120 @@
       border-color: var(--blue);
     }
 
+    /* 3-Batten Stage Visual Summary */
+    .stage-preview-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 0.65rem 0.75rem;
+      margin-bottom: 0.85rem;
+    }
+
+    .stage-preview-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.45rem;
+      font-size: 0.84rem;
+    }
+
+    .stage-preview-title {
+      font-weight: 700;
+      color: var(--navy);
+    }
+
+    .stage-summary-text {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .stage-svg-wrap {
+      background: #0f172a;
+      border-radius: 10px;
+      padding: 0.35rem;
+      overflow: hidden;
+    }
+
+    .stage-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .stage-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-top: 0.4rem;
+      font-size: 0.74rem;
+      color: var(--muted);
+    }
+
+    .pb-index-preview {
+      margin-top: 0.45rem;
+      background: #0f172a;
+      border-radius: 7px;
+      padding: 3px 4px;
+      overflow: hidden;
+    }
+
+    .pb-index-mini-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .pb-index-summary {
+      margin-top: 0.3rem;
+      font-size: 0.74rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+    }
+
+    button.pb-index-open-btn {
+      width: 100%;
+      min-height: auto;
+      padding: 0;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      gap: 0.25rem;
+      text-align: left;
+      font-weight: inherit;
+    }
+
+    button.pb-index-open-btn:hover {
+      background: transparent;
+    }
+
+    input.pb-index-name-input {
+      width: 100%;
+      min-height: 40px;
+      padding: 0.3rem 0.55rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: #ffffff;
+      color: var(--ink);
+      margin-top: 0.25rem;
+    }
+
+    input.pb-index-name-input::placeholder {
+      font-weight: 400;
+      color: #94a3b8;
+    }
+
     /* Print View */
     #print-area {
       display: none;
@@ -1442,6 +1556,9 @@
 
       function persistField(pbKey, stepIdx, relPath, val, immediate = false) {
         saveStateLocalOnly('자동 저장됨');
+        if (ui.tab !== 'INDEX' && syncRuntime.editorBindings) {
+          updateEditorStagePreview(getActiveStep(), syncRuntime.editorBindings);
+        }
         if (isSyncConfigured() && syncRuntime.db) {
           queueFieldSync(pbKey, stepIdx, relPath, val, immediate);
         }
@@ -1498,6 +1615,277 @@
         }
         ranges.push(start === prev ? `${start}` : `${start}~${prev}`);
         return ranges.join(', ');
+      }
+
+      function parseByteVal(v) {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.max(0, Math.min(255, Math.round(n))) : 0;
+      }
+
+      function computeLightColorState(dim, mac, r, g, b, w, str) {
+        const rr = Math.min(255, r + w);
+        const gg = Math.min(255, g + w);
+        const bb = Math.min(255, b + w);
+        const hasColor = (rr + gg + bb) > 0;
+        if (dim > 0) {
+          return {
+            on: true,
+            alpha: 0.3 + 0.7 * (dim / 255),
+            color: hasColor ? `rgb(${rr},${gg},${bb})` : (mac > 0 ? '#fbbf24' : '#e2e8f0'),
+            dimZeroWithColor: false,
+            str,
+          };
+        }
+        if (hasColor) {
+          return {
+            on: false,
+            alpha: 0,
+            color: `rgb(${rr},${gg},${bb})`,
+            dimZeroWithColor: true,
+            str,
+          };
+        }
+        return { on: false, alpha: 0, color: '#1e293b', dimZeroWithColor: false, str };
+      }
+
+      function computeStepLightMap(step) {
+        const br = parseByteVal(step.border.r);
+        const bg = parseByteVal(step.border.g);
+        const bb = parseByteVal(step.border.b);
+        const bMax = Math.max(br, bg, bb);
+        const border = {
+          on: bMax > 0,
+          alpha: bMax > 0 ? 0.3 + 0.7 * (bMax / 255) : 0,
+          color: bMax > 0 ? `rgb(${br},${bg},${bb})` : '#1e293b',
+        };
+
+        const parRaw = {};
+        for (const fid of PAR_IDS) parRaw[fid] = { dim: 0, str: 0, mac: 0, r: 0, g: 0, b: 0, w: 0 };
+        for (const grp of step.par) {
+          const gDim = parseByteVal(grp.ch.dim);
+          const gStr = parseByteVal(grp.ch.str);
+          const gMac = parseByteVal(grp.ch.mac);
+          const gR = parseByteVal(grp.ch.r);
+          const gG = parseByteVal(grp.ch.g);
+          const gB = parseByteVal(grp.ch.b);
+          const gW = parseByteVal(grp.ch.w);
+          for (const fid of grp.fixtures) {
+            const dst = parRaw[fid];
+            if (!dst) continue;
+            dst.dim = Math.max(dst.dim, gDim);
+            dst.str = Math.max(dst.str, gStr);
+            dst.mac = Math.max(dst.mac, gMac);
+            dst.r = Math.max(dst.r, gR);
+            dst.g = Math.max(dst.g, gG);
+            dst.b = Math.max(dst.b, gB);
+            dst.w = Math.max(dst.w, gW);
+          }
+        }
+        const par = {};
+        for (const fid of PAR_IDS) {
+          const p = parRaw[fid];
+          par[fid] = computeLightColorState(p.dim, p.mac, p.r, p.g, p.b, p.w, p.str);
+        }
+
+        const spotRaw = {};
+        for (const fid of SPOT_IDS) spotRaw[fid] = { dim: 0, str: 0, r: 0, g: 0, b: 0, w: 0 };
+        for (const grp of step.spot) {
+          const gDim = parseByteVal(grp.ch.dim);
+          const gStr = parseByteVal(grp.ch.str);
+          const gR = parseByteVal(grp.ch.r);
+          const gG = parseByteVal(grp.ch.g);
+          const gB = parseByteVal(grp.ch.b);
+          const gW = parseByteVal(grp.ch.w);
+          for (const fid of grp.fixtures) {
+            const dst = spotRaw[fid];
+            if (!dst) continue;
+            dst.dim = Math.max(dst.dim, gDim);
+            dst.str = Math.max(dst.str, gStr);
+            dst.r = Math.max(dst.r, gR);
+            dst.g = Math.max(dst.g, gG);
+            dst.b = Math.max(dst.b, gB);
+            dst.w = Math.max(dst.w, gW);
+          }
+        }
+        const spot = {};
+        for (const fid of SPOT_IDS) {
+          const s = spotRaw[fid];
+          spot[fid] = computeLightColorState(s.dim, 0, s.r, s.g, s.b, s.w, s.str);
+        }
+
+        const movUnits = {
+          9: step.moving.f9,
+          10: step.moving.f10Same ? step.moving.f9 : step.moving.f10,
+        };
+        const moving = {};
+        for (const id of [9, 10]) {
+          const u = movUnits[id];
+          const dim = parseByteVal(u.dim);
+          const shut = parseByteVal(u.shut);
+          const pan = u.pan !== '' ? parseByteVal(u.pan) : null;
+          const tilt = u.tilt !== '' ? parseByteVal(u.tilt) : null;
+          const anySet = Object.values(u).some(Boolean);
+          const on = dim > 0 || (shut > 0 && anySet) || anySet;
+          moving[id] = {
+            on,
+            alpha: dim > 0 ? 0.35 + 0.65 * (dim / 255) : (anySet ? 0.35 : 0),
+            color: dim > 0 ? '#e0f2fe' : '#94a3b8',
+            pan,
+            tilt,
+            str: shut,
+          };
+        }
+        return { border, par, spot, moving };
+      }
+
+      function summarizeStepLights(lm) {
+        const parts = [];
+        if (lm.border.on) parts.push('보더');
+        const parCnt = PAR_IDS.filter((fid) => lm.par[fid].on || lm.par[fid].dimZeroWithColor).length;
+        if (parCnt > 0) parts.push(`파 ${parCnt}대`);
+        const spotCnt = SPOT_IDS.filter((fid) => lm.spot[fid].on || lm.spot[fid].dimZeroWithColor).length;
+        if (spotCnt > 0) parts.push(`스포트 ${spotCnt}대`);
+        const m9 = lm.moving[9].on;
+        const m10 = lm.moving[10].on;
+        if (m9 && m10) parts.push('무빙 9·10');
+        else if (m9) parts.push('무빙 9');
+        else if (m10) parts.push('무빙 10');
+        return parts.length ? parts.join(' · ') : '암전 / 미입력';
+      }
+
+      function buildStageSvg(lm, { compact = false } = {}) {
+        const w = 380;
+        const h = compact ? 56 : 120;
+        const ys = compact ? [11, 28, 45] : [22, 58, 96];
+        const railX1 = compact ? 16 : 26;
+        const railX2 = compact ? 364 : 368;
+        const out = [`<svg class="${compact ? 'pb-index-mini-svg' : 'stage-svg'}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(summarizeStepLights(lm))}">`];
+
+        for (let i = 0; i < 3; i++) {
+          out.push(`<line x1="${railX1}" y1="${ys[i]}" x2="${railX2}" y2="${ys[i]}" stroke="#334155" stroke-width="${compact ? 1.2 : 2}" />`);
+          if (!compact) {
+            out.push(`<text x="5" y="${ys[i] + 4}" fill="#94a3b8" font-size="10" font-weight="700">${i + 1}B</text>`);
+          }
+        }
+
+        // Batten 2: Border (0-1) segments
+        const bSegs = [[34, 98], [138, 182], [202, 246], [286, 350]];
+        const bH = compact ? 6 : 12;
+        const bY = ys[1] - bH / 2;
+        for (const [x1, x2] of bSegs) {
+          const sw = x2 - x1;
+          if (lm.border.on) {
+            out.push(`<rect x="${x1 - 2}" y="${bY - 2}" width="${sw + 4}" height="${bH + 4}" rx="4" fill="${lm.border.color}" fill-opacity="${(lm.border.alpha * 0.32).toFixed(2)}" />`);
+            out.push(`<rect x="${x1}" y="${bY}" width="${sw}" height="${bH}" rx="3" fill="${lm.border.color}" fill-opacity="${lm.border.alpha.toFixed(2)}" stroke="#f8fafc" stroke-opacity="0.35" stroke-width="0.8" />`);
+          } else {
+            out.push(`<rect x="${x1}" y="${bY}" width="${sw}" height="${bH}" rx="3" fill="#1e293b" stroke="#475569" stroke-width="0.8" />`);
+          }
+        }
+        if (!compact) {
+          out.push(`<text x="192" y="${ys[1] + 17}" text-anchor="middle" fill="#94a3b8" font-size="8.5" font-weight="600">보더1</text>`);
+        }
+
+        const drawPar = (fid, x, y) => {
+          const st = lm.par[fid];
+          const r = compact ? 4.8 : 7.8;
+          if (st.on) {
+            out.push(`<circle cx="${x}" cy="${y}" r="${r + (compact ? 2.5 : 4.5)}" fill="${st.color}" fill-opacity="${(st.alpha * 0.35).toFixed(2)}" />`);
+            out.push(`<circle cx="${x}" cy="${y}" r="${r}" fill="${st.color}" fill-opacity="${st.alpha.toFixed(2)}" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.9" />`);
+          } else if (st.dimZeroWithColor) {
+            out.push(`<circle cx="${x}" cy="${y}" r="${r}" fill="#0f172a" stroke="${st.color}" stroke-width="${compact ? 1.2 : 1.6}" stroke-dasharray="2.5 2" />`);
+          } else {
+            out.push(`<circle cx="${x}" cy="${y}" r="${r}" fill="#1e293b" stroke="#475569" stroke-width="0.8" />`);
+          }
+          if (!compact && st.str > 0) {
+            out.push(`<circle cx="${x + 6.5}" cy="${y - 6.5}" r="2.3" fill="#fbbf24" />`);
+          }
+          if (!compact) {
+            out.push(`<text x="${x}" y="${y + 17}" text-anchor="middle" fill="${st.on ? '#e2e8f0' : '#94a3b8'}" font-size="8.5" font-weight="700">P${fid}</text>`);
+          }
+        };
+
+        const drawSpot = (fid, x, y) => {
+          const st = lm.spot[fid];
+          const s = compact ? 8.5 : 14;
+          const hs = s / 2;
+          if (st.on) {
+            const gs = s + (compact ? 4 : 7);
+            out.push(`<rect x="${x - gs / 2}" y="${y - gs / 2}" width="${gs}" height="${gs}" rx="4" fill="${st.color}" fill-opacity="${(st.alpha * 0.35).toFixed(2)}" />`);
+            out.push(`<rect x="${x - hs}" y="${y - hs}" width="${s}" height="${s}" rx="${compact ? 2 : 3}" fill="${st.color}" fill-opacity="${st.alpha.toFixed(2)}" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.9" />`);
+          } else if (st.dimZeroWithColor) {
+            out.push(`<rect x="${x - hs}" y="${y - hs}" width="${s}" height="${s}" rx="${compact ? 2 : 3}" fill="#0f172a" stroke="${st.color}" stroke-width="${compact ? 1.2 : 1.6}" stroke-dasharray="2.5 2" />`);
+          } else {
+            out.push(`<rect x="${x - hs}" y="${y - hs}" width="${s}" height="${s}" rx="${compact ? 2 : 3}" fill="#1e293b" stroke="#475569" stroke-width="0.8" />`);
+          }
+          if (!compact && st.str > 0) {
+            out.push(`<circle cx="${x + hs}" cy="${y - hs}" r="2.3" fill="#fbbf24" />`);
+          }
+          if (!compact) {
+            out.push(`<text x="${x}" y="${y + 17}" text-anchor="middle" fill="${st.on ? '#e2e8f0' : '#94a3b8'}" font-size="8.5" font-weight="700">${fid}</text>`);
+          }
+        };
+
+        const drawMoving = (id, x, y) => {
+          const st = lm.moving[id];
+          const mw = compact ? 11 : 18;
+          const mh = compact ? 9 : 15;
+          if (st.on) {
+            out.push(`<circle cx="${x}" cy="${y}" r="${compact ? 7 : 13}" fill="${st.color}" fill-opacity="${(st.alpha * 0.32).toFixed(2)}" />`);
+            out.push(`<rect x="${x - mw / 2}" y="${y - mh / 2}" width="${mw}" height="${mh}" rx="${compact ? 2.5 : 4}" fill="${st.color}" fill-opacity="${st.alpha.toFixed(2)}" stroke="#38bdf8" stroke-width="${compact ? 0.9 : 1.2}" />`);
+          } else {
+            out.push(`<rect x="${x - mw / 2}" y="${y - mh / 2}" width="${mw}" height="${mh}" rx="${compact ? 2.5 : 4}" fill="#1e293b" stroke="#475569" stroke-width="0.9" />`);
+          }
+          if (st.on && (st.pan !== null || st.tilt !== null)) {
+            const px = st.pan !== null ? (st.pan - 128) / 128 : 0;
+            const py = st.tilt !== null ? (st.tilt - 128) / 128 : 0;
+            const mag = Math.hypot(px, py);
+            if (mag > 0.08) {
+              const len = Math.min(1, mag) * (compact ? 6.5 : 11);
+              const ax = x + (px / mag) * len;
+              const ay = y + (py / mag) * len;
+              out.push(`<line x1="${x}" y1="${y}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#0284c7" stroke-width="${compact ? 1.4 : 2}" stroke-linecap="round" />`);
+              out.push(`<circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="${compact ? 1.4 : 2.1}" fill="#0284c7" />`);
+            } else {
+              out.push(`<circle cx="${x}" cy="${y}" r="${compact ? 1.3 : 2}" fill="#0284c7" />`);
+            }
+          }
+          if (!compact) {
+            out.push(`<text x="${x}" y="${y + 17}" text-anchor="middle" fill="${st.on ? '#e0f2fe' : '#94a3b8'}" font-size="8.5" font-weight="700">M${id}</text>`);
+          }
+        };
+
+        // Batten 1: P3, S11, S13, P4
+        drawPar(3, 90, ys[0]);
+        drawSpot(11, 150, ys[0]);
+        drawSpot(13, 238, ys[0]);
+        drawPar(4, 298, ys[0]);
+
+        // Batten 2: S12, S14 (Border 1 drawn above)
+        drawSpot(12, 118, ys[1]);
+        drawSpot(14, 266, ys[1]);
+
+        // Batten 3: S15, S16, M9, P5, S17, P6, S18, P7, M10, S19, S20
+        drawSpot(15, 38, ys[2]);
+        drawSpot(16, 66, ys[2]);
+        drawMoving(9, 100, ys[2]);
+        drawPar(5, 134, ys[2]);
+        drawSpot(17, 162, ys[2]);
+        drawPar(6, 192, ys[2]);
+        drawSpot(18, 222, ys[2]);
+        drawPar(7, 250, ys[2]);
+        drawMoving(10, 284, ys[2]);
+        drawSpot(19, 318, ys[2]);
+        drawSpot(20, 346, ys[2]);
+
+        out.push('</svg>');
+        return out.join('');
+      }
+
+      function updateEditorStagePreview(step, b) {
+        if (!b || !b.stagePreviewWrap || !b.stageSummaryEl) return;
+        const lm = computeStepLightMap(step);
+        b.stagePreviewWrap.innerHTML = buildStageSvg(lm, { compact: false });
+        b.stageSummaryEl.textContent = summarizeStepLights(lm);
       }
 
       function getActiveStep() {
@@ -1744,27 +2132,33 @@
           const grid = makeEl('div', { className: 'pb-card-grid' });
           for (let pb = 1; pb <= 8; pb++) {
             const pbObj = state.pages[p][pb];
+            const pbKey = `${p}.${String(pb).padStart(2, '0')}`;
             const filled = pbHasData(p, pb);
-            const card = makeEl('button', {
-              type: 'button',
+            const card = makeEl('div', {
               className: `pb-index-card${filled ? ' filled' : ''}`,
+            });
+
+            const openBtn = makeEl('button', {
+              type: 'button',
+              className: 'pb-index-open-btn',
             });
 
             const top = makeEl('div', { className: 'pb-index-top' });
             top.append(
-              makeEl('span', { className: 'pb-code' }, `${p}.${String(pb).padStart(2, '0')}`),
+              makeEl('span', { className: 'pb-code' }, pbKey),
               makeEl('span', { className: 'step-count-pill' }, `${pbObj.steps.length} 스텝`)
             );
+            openBtn.appendChild(top);
 
-            const sceneName = pbObj.steps[0]?.scene?.trim();
-            const sceneEl = makeEl(
-              'div',
-              { className: `pb-index-scene${sceneName ? '' : ' empty'}` },
-              sceneName || '비어 있음 (눌러서 입력)'
-            );
+            if (filled) {
+              const lm = computeStepLightMap(pbObj.steps[0]);
+              const miniWrap = makeEl('div', { className: 'pb-index-preview' });
+              miniWrap.innerHTML = buildStageSvg(lm, { compact: true });
+              const miniSum = makeEl('div', { className: 'pb-index-summary' }, summarizeStepLights(lm));
+              openBtn.append(miniWrap, miniSum);
+            }
 
-            card.append(top, sceneEl);
-            card.addEventListener('click', () => {
+            openBtn.addEventListener('click', () => {
               ui.tab = `P${p}`;
               ui.page = p;
               ui.pb = pb;
@@ -1772,6 +2166,29 @@
               render();
               updatePresence();
             });
+
+            const nameInp = makeEl('input', {
+              type: 'text',
+              className: 'pb-index-name-input',
+              value: pbObj.steps[0]?.scene || '',
+              placeholder: filled ? '플레이백 이름 입력...' : '이름 입력 (비어 있음)',
+              'data-pb-key': pbKey,
+              'aria-label': `${pbKey} 플레이백 이름`,
+              enterkeyhint: 'done',
+            });
+            nameInp.addEventListener('input', () => {
+              pbObj.steps[0].scene = nameInp.value;
+              card.classList.toggle('filled', pbHasData(p, pb));
+              persistField(pbKey, 0, 'scene', pbObj.steps[0].scene);
+            });
+            nameInp.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                nameInp.blur();
+              }
+            });
+
+            card.append(openBtn, nameInp);
             grid.appendChild(card);
           }
           sec.appendChild(grid);
@@ -1904,6 +2321,19 @@
         actionsRow.append(addEmptyBtn, cloneBtn, movePrevBtn, moveNextBtn);
         stepBar.append(tabsRow, actionsRow);
         root.appendChild(stepBar);
+
+        // 3-Batten Real-Time Stage Lighting Visual Summary
+        const stageCard = makeEl('section', { className: 'stage-preview-card', 'aria-label': '3바텐 조명 요약' });
+        const stageHead = makeEl('div', { className: 'stage-preview-head' });
+        const stageSummaryEl = makeEl('span', { className: 'stage-summary-text' });
+        stageHead.append(makeEl('span', { className: 'stage-preview-title' }, '3바텐 조명 요약'), stageSummaryEl);
+        const stagePreviewWrap = makeEl('div', { className: 'stage-svg-wrap' });
+        const stageLegend = makeEl('div', { className: 'stage-legend' }, '● 파 · ■ 스포트 · ▬ 보더 · ◈ 무빙(화살표=PAN/TILT)');
+        stageCard.append(stageHead, stagePreviewWrap, stageLegend);
+        root.appendChild(stageCard);
+        bindings.stagePreviewWrap = stagePreviewWrap;
+        bindings.stageSummaryEl = stageSummaryEl;
+        updateEditorStagePreview(step, bindings);
 
         // Form Wrapper
         const form = makeEl('form', { novalidate: '' });
@@ -2645,6 +3075,7 @@
             setInputIfUnfocused(b.moving.f10[k], step.moving.f10[k], true);
           }
         }
+        updateEditorStagePreview(step, b);
       }
 
       document.getElementById('app-main').addEventListener('focusout', () => {
@@ -2972,7 +3403,26 @@
         }
 
         if (ui.tab === 'INDEX') {
-          render();
+          const activeEl = document.activeElement;
+          const editingIndexName = Boolean(
+            activeEl && activeEl.classList && activeEl.classList.contains('pb-index-name-input')
+          );
+          if (!editingIndexName) {
+            render();
+            return;
+          }
+          document.querySelectorAll('.pb-index-name-input').forEach((inp) => {
+            if (inp === activeEl) return;
+            const m = /^(11|12|13)\.0([1-8])$/.exec(inp.dataset.pbKey || '');
+            if (!m) return;
+            const p = Number(m[1]);
+            const pb = Number(m[2]);
+            const nextVal = state.pages[p][pb].steps[0]?.scene || '';
+            if (inp.value !== nextVal) inp.value = nextVal;
+            const cardEl = inp.closest('.pb-index-card');
+            if (cardEl) cardEl.classList.toggle('filled', pbHasData(p, pb));
+          });
+          syncRuntime.deferredRender = true;
           return;
         }
 
