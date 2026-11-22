@@ -888,6 +888,58 @@
       font-size: 0.78rem;
     }
 
+    /* Profile Picker Dialog */
+    .profile-list {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .profile-card-btn {
+      width: 100%;
+      justify-content: space-between;
+      padding: 0.9rem 1rem;
+      text-align: left;
+      border: 1.5px solid var(--border-strong);
+      border-radius: 12px;
+      background: var(--surface);
+      font-size: 1rem;
+    }
+
+    .profile-card-btn:hover {
+      background: #f8fafc;
+      border-color: var(--blue);
+    }
+
+    .profile-card-btn[aria-current="true"] {
+      border-color: var(--blue);
+      background: var(--blue-bg);
+      color: var(--blue);
+    }
+
+    .profile-card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+    }
+
+    .profile-card-badge {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .profile-card-btn[aria-current="true"] .profile-card-badge {
+      background: #ffffff;
+      color: var(--blue);
+      border-color: var(--blue);
+    }
+
     /* Print View */
     #print-area {
       display: none;
@@ -933,6 +985,9 @@
         <span id="save-status" class="save-status" role="status" aria-live="polite">저장됨</span>
       </div>
       <div class="topbar-actions">
+        <button type="button" class="hdr-btn" id="btn-open-profile" aria-label="프로필 선택">
+          <span id="profile-btn-label">프로필 선택</span> ▾
+        </button>
         <button type="button" class="hdr-btn sync-btn" command="show-modal" commandfor="sync-dialog" id="btn-open-sync">
           <span id="sync-dot" class="sync-dot" data-state="local" aria-hidden="true"></span>
           <span id="sync-btn-label">실시간 · 로컬</span>
@@ -1032,8 +1087,24 @@
         <button type="button" class="danger" id="btn-sync-disconnect">연동 해제</button>
       </div>
       <p class="hint" style="margin:0.75rem 0 0;">
-        ※ 공유 링크(<code>?fb=</code>)에는 접속코드(PIN)가 포함되지 않습니다. 팀원에게는 링크와 PIN을 함께 전달하세요.
+        ※ 기본 서버와 접속코드가 자동 설정되어 프로필 선택 시 바로 연결됩니다. 공유 링크를 복사하면 현재 프로필(<code>?profile=</code>) 주소가 복사됩니다.
       </p>
+    </div>
+  </dialog>
+
+  <!-- Profile Selection Dialog -->
+  <dialog id="profile-dialog" aria-labelledby="profile-title">
+    <div class="dlg-head">
+      <h2 id="profile-title">프로필 선택</h2>
+      <form method="dialog">
+        <button type="submit" value="close" id="btn-profile-close" style="min-height:40px; padding:0.3rem 0.7rem;" hidden>닫기</button>
+      </form>
+    </div>
+    <div class="dlg-body">
+      <p style="margin:0 0 0.8rem; font-size:0.9rem; color:var(--muted);">
+        사용할 공연/버전 프로필을 선택하면 해당 실시간 기록판으로 바로 연결됩니다.
+      </p>
+      <div id="profile-list" class="profile-list"></div>
     </div>
   </dialog>
 
@@ -1053,7 +1124,12 @@
 
   <script>
     (() => {
-      const STORAGE_KEY = 'eoshil_fox512s_v1';
+      const LEGACY_STORAGE_KEY = 'eoshil_fox512s_v1';
+      const LAST_PROFILE_KEY = 'eoshil_fox512s_last_profile';
+      const PROFILES = [
+        { id: 'ver1', label: '그여문두 ver1' },
+        { id: 'ver2', label: '그여문두 ver2' },
+      ];
       const PAGES = [11, 12, 13];
       const PAR_IDS = [3, 4, 5, 6, 7];
       const SPOT_IDS = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
@@ -1115,8 +1191,10 @@
       }
 
       const DEFAULT_DB_URL = 'https://lighting-fox512s-s-default-rtdb.asia-southeast1.firebasedatabase.app';
+      const DEFAULT_PIN = 'esg317';
       const SYNC_STORAGE_KEY = 'eoshil_fox512s_rtdb_v2';
-      let state = normalizeState(loadState());
+      let activeProfileId = '';
+      let state = createInitialState();
       let syncCfg = loadSyncCfg();
       let ui = { tab: 'INDEX', page: 11, pb: 1, stepIdx: 0 };
       const movingOpenMap = new Map();
@@ -1129,6 +1207,7 @@
         db: null,
         mod: null,
         roomHash: '',
+        roomPath: '',
         unsubs: [],
         peers: [],
         knownServerPbs: new Set(),
@@ -1238,9 +1317,36 @@
         return base;
       }
 
-      function loadState() {
+      function getProfileById(id) {
+        return PROFILES.find((p) => p.id === id) || null;
+      }
+
+      function getProfileStorageKey(profileId = activeProfileId) {
+        return profileId ? `eoshil_fox512s_profile_${profileId}` : LEGACY_STORAGE_KEY;
+      }
+
+      function getLastProfileId() {
         try {
-          const raw = localStorage.getItem(STORAGE_KEY);
+          return localStorage.getItem(LAST_PROFILE_KEY) || '';
+        } catch {
+          return '';
+        }
+      }
+
+      function saveLastProfileId(id) {
+        try {
+          localStorage.setItem(LAST_PROFILE_KEY, id);
+        } catch {}
+      }
+
+      function getProfileDbPath() {
+        if (!syncRuntime.roomHash || !activeProfileId) return '';
+        return `rooms/${syncRuntime.roomHash}/profiles/${activeProfileId}`;
+      }
+
+      function loadState(profileId = activeProfileId) {
+        try {
+          const raw = localStorage.getItem(getProfileStorageKey(profileId));
           if (!raw) return createInitialState();
           const parsed = JSON.parse(raw);
           if (!parsed || !parsed.pages) return createInitialState();
@@ -1253,15 +1359,16 @@
       function loadSyncCfg() {
         try {
           const raw = localStorage.getItem(SYNC_STORAGE_KEY);
-          if (!raw) return { url: '', pin: '', userName: '' };
+          if (!raw) return { url: '', pin: '', userName: '', disabled: false };
           const parsed = JSON.parse(raw);
           return {
             url: typeof parsed.url === 'string' ? parsed.url.trim().replace(/\/+$/, '') : '',
             pin: typeof parsed.pin === 'string' ? parsed.pin : '',
             userName: typeof parsed.userName === 'string' ? parsed.userName : '',
+            disabled: Boolean(parsed.disabled),
           };
         } catch {
-          return { url: '', pin: '', userName: '' };
+          return { url: '', pin: '', userName: '', disabled: false };
         }
       }
 
@@ -1317,8 +1424,9 @@
       }
 
       function saveStateLocalOnly(msg = '') {
+        if (!activeProfileId) return;
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          localStorage.setItem(getProfileStorageKey(activeProfileId), JSON.stringify(state));
           if (msg) saveStatusEl.textContent = msg;
         } catch {
           saveStatusEl.textContent = '저장 공간 부족';
@@ -1402,13 +1510,77 @@
       // Dialog fallbacks & close handling
       const backupDialog = document.getElementById('backup-dialog');
       const syncDialog = document.getElementById('sync-dialog');
+      const profileDialog = document.getElementById('profile-dialog');
+      const profileListEl = document.getElementById('profile-list');
+      const profileBtnLabelEl = document.getElementById('profile-btn-label');
+      const btnProfileClose = document.getElementById('btn-profile-close');
       const confirmDialog = document.getElementById('confirm-dialog');
+
+      function renderProfilePicker() {
+        if (!profileListEl) return;
+        const lastId = getLastProfileId();
+        profileListEl.innerHTML = '';
+        PROFILES.forEach((prof, idx) => {
+          const isCurrent = prof.id === activeProfileId;
+          const badgeText = isCurrent
+            ? '현재 선택'
+            : (prof.id === lastId ? '최근 사용' : '선택');
+          const btn = makeEl('button', {
+            type: 'button',
+            className: 'profile-card-btn',
+            'data-profile-id': prof.id,
+            ...(isCurrent ? { 'aria-current': 'true' } : {}),
+          });
+          btn.append(
+            makeEl('span', { className: 'profile-card-title' }, `${idx + 1}. ${prof.label}`),
+            makeEl('span', { className: 'profile-card-badge' }, badgeText)
+          );
+          btn.addEventListener('click', () => {
+            selectProfile(prof.id);
+          });
+          profileListEl.appendChild(btn);
+        });
+      }
+
+      function openProfileDialog({ required = false } = {}) {
+        renderProfilePicker();
+        if (btnProfileClose) btnProfileClose.hidden = required;
+        profileDialog.setAttribute('closedby', required ? 'none' : 'any');
+        if (!profileDialog.open) profileDialog.showModal();
+      }
+
+      async function selectProfile(profileId) {
+        const prof = getProfileById(profileId);
+        if (!prof) return;
+        if (prof.id === activeProfileId && syncRuntime.db) {
+          if (profileDialog.open) profileDialog.close();
+          return;
+        }
+        await teardownFirebase();
+        activeProfileId = prof.id;
+        saveLastProfileId(prof.id);
+        if (profileBtnLabelEl) profileBtnLabelEl.textContent = prof.label;
+        ui = { tab: 'INDEX', page: 11, pb: 1, stepIdx: 0 };
+        movingOpenMap.clear();
+        state = normalizeState(loadState(prof.id));
+        if (profileDialog.open) profileDialog.close();
+        render();
+        if (!syncCfg.disabled && isSyncConfigured()) {
+          connectToFirebase({ fromUserAction: false });
+        } else {
+          updateSyncBadge('local');
+        }
+      }
 
       function syncSetupInputs() {
         document.getElementById('sync-url').value = syncCfg.url || '';
         document.getElementById('sync-pin').value = syncCfg.pin || '';
         document.getElementById('sync-user').value = syncCfg.userName || '';
       }
+
+      document.getElementById('btn-open-profile').addEventListener('click', () => {
+        openProfileDialog({ required: !activeProfileId });
+      });
 
       if (!('commandForElement' in HTMLButtonElement.prototype)) {
         document.getElementById('btn-open-backup').addEventListener('click', () => {
@@ -1429,13 +1601,20 @@
           const r = dlg.getBoundingClientRect();
           return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
         };
-        for (const dlg of [backupDialog, syncDialog]) {
+        for (const dlg of [backupDialog, syncDialog, profileDialog]) {
           let downOut = false;
           dlg.addEventListener('pointerdown', (e) => { downOut = isOutside(e, dlg); });
-          dlg.addEventListener('pointerup', (e) => { if (downOut && isOutside(e, dlg)) dlg.close('dismiss'); });
+          dlg.addEventListener('pointerup', (e) => {
+            if (dlg === profileDialog && !activeProfileId) return;
+            if (downOut && isOutside(e, dlg)) dlg.close('dismiss');
+          });
         }
       }
 
+      profileDialog.addEventListener('cancel', (e) => {
+        if (!activeProfileId) e.preventDefault();
+      });
+      profileDialog.addEventListener('close', () => { profileDialog.returnValue = ''; });
       backupDialog.addEventListener('close', () => { backupDialog.returnValue = ''; });
       syncDialog.addEventListener('close', () => { syncDialog.returnValue = ''; });
 
@@ -2582,8 +2761,10 @@
           syncRuntime.knownServerPbs.add(entry.pbKey);
         }
 
+        const basePath = getProfileDbPath();
+        if (!basePath) return;
         const { ref, update } = syncRuntime.mod;
-        const roomRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}`);
+        const roomRef = ref(syncRuntime.db, basePath);
         const rtdbPath = entry.isMeta
           ? `meta/${entry.field}`
           : `pbs/${pbKeyToDbKey(entry.pbKey)}/steps/${entry.stepIdx}/${entry.relPath}`;
@@ -2633,8 +2814,10 @@
         updateSyncBadge('saving');
 
         try {
+          const basePath = getProfileDbPath();
+          if (!basePath) return;
           const { ref, set } = syncRuntime.mod;
-          const pbRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}/pbs/${pbKeyToDbKey(pbKey)}`);
+          const pbRef = ref(syncRuntime.db, `${basePath}/pbs/${pbKeyToDbKey(pbKey)}`);
           await set(pbRef, sanitizePbForRtdb(state.pages[p][pb]));
           for (const [k, oldSeq] of snapshotSeqs.entries()) {
             if (syncRuntime.pendingFields.get(k)?.seq === oldSeq) {
@@ -2683,9 +2866,10 @@
       }
 
       function updatePresence() {
-        if (!syncRuntime.db || !syncRuntime.mod || !syncRuntime.connected || !syncRuntime.roomHash) return;
+        const basePath = getProfileDbPath();
+        if (!syncRuntime.db || !syncRuntime.mod || !syncRuntime.connected || !basePath) return;
         const { ref, set, serverTimestamp } = syncRuntime.mod;
-        const presRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}/presence/${clientId}`);
+        const presRef = ref(syncRuntime.db, `${basePath}/presence/${clientId}`);
         set(presRef, {
           name: (syncCfg.userName || '').trim() || '익명',
           where: getPresenceWhere(),
@@ -2749,24 +2933,26 @@
           }));
         renderPresenceUi();
 
-        if (room.meta && typeof room.meta === 'object') {
-          const nextMeta = normalizeMeta(room.meta);
-          for (const f of ['title', 'owner', 'usbFile']) {
-            const p = syncRuntime.pendingFields.get(`meta/${f}`);
-            if (p) nextMeta[f] = p.val;
-          }
-          state.meta = nextMeta;
+        const nextMeta = normalizeMeta(room.meta);
+        for (const f of ['title', 'owner', 'usbFile']) {
+          const p = syncRuntime.pendingFields.get(`meta/${f}`);
+          if (p) nextMeta[f] = p.val;
         }
+        state.meta = nextMeta;
 
         for (const p of PAGES) {
           for (let pb = 1; pb <= 8; pb++) {
             const pbKey = `${p}.${String(pb).padStart(2, '0')}`;
             const dbKey = pbKeyToDbKey(pbKey);
             if (syncRuntime.wholePbInFlight.has(pbKey)) continue;
-            if (!Object.hasOwn(remotePbs, dbKey) || remotePbs[dbKey] == null) continue;
 
-            syncRuntime.knownServerPbs.add(pbKey);
-            const nextPb = normalizePb(remotePbs[dbKey]);
+            const hasRemotePb = Object.hasOwn(remotePbs, dbKey) && remotePbs[dbKey] != null;
+            if (hasRemotePb) {
+              syncRuntime.knownServerPbs.add(pbKey);
+            } else {
+              syncRuntime.knownServerPbs.delete(pbKey);
+            }
+            const nextPb = hasRemotePb ? normalizePb(remotePbs[dbKey]) : { steps: [createEmptyStep()] };
             const prefix = `${pbKey}/`;
             for (const [k, entry] of syncRuntime.pendingFields.entries()) {
               if (!k.startsWith(prefix)) continue;
@@ -2837,10 +3023,11 @@
         syncRuntime.connected = false;
         syncRuntime.hasReceivedSnapshot = false;
 
-        if (syncRuntime.db && syncRuntime.mod && syncRuntime.roomHash) {
+        const prevRoomPath = syncRuntime.roomPath;
+        if (syncRuntime.db && syncRuntime.mod && prevRoomPath) {
           try {
             const { ref, remove } = syncRuntime.mod;
-            await remove(ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}/presence/${clientId}`));
+            await remove(ref(syncRuntime.db, `${prevRoomPath}/presence/${clientId}`));
           } catch {}
         }
         if (syncRuntime.app && syncRuntime.mod && typeof syncRuntime.mod.deleteApp === 'function') {
@@ -2849,6 +3036,7 @@
         syncRuntime.app = null;
         syncRuntime.db = null;
         syncRuntime.roomHash = '';
+        syncRuntime.roomPath = '';
         renderPresenceUi();
       }
 
@@ -2867,6 +3055,12 @@
       }
 
       async function connectToFirebase({ fromUserAction = false } = {}) {
+        if (!activeProfileId) {
+          if (fromUserAction) {
+            setSyncMsg('먼저 상단에서 프로필을 선택하세요.', 'err');
+          }
+          return false;
+        }
         syncCfg.url = (syncCfg.url || '').trim().replace(/\/+$/, '');
         syncCfg.pin = (syncCfg.pin || '').trim();
         syncCfg.userName = (syncCfg.userName || '').trim();
@@ -2893,6 +3087,7 @@
         }
 
         const roomHash = sha256Hex(`fox512s:${syncCfg.pin}`);
+        const basePath = `rooms/${roomHash}/profiles/${activeProfileId}`;
         let app;
         try {
           app = mod.initializeApp({ databaseURL: syncCfg.url }, `fox_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
@@ -2906,10 +3101,11 @@
         syncRuntime.app = app;
         syncRuntime.db = db;
         syncRuntime.roomHash = roomHash;
+        syncRuntime.roomPath = basePath;
 
         const connRef = mod.ref(db, '.info/connected');
-        const presRef = mod.ref(db, `rooms/${roomHash}/presence/${clientId}`);
-        const roomRef = mod.ref(db, `rooms/${roomHash}`);
+        const presRef = mod.ref(db, `${basePath}/presence/${clientId}`);
+        const roomRef = mod.ref(db, basePath);
 
         const unsubConn = mod.onValue(connRef, (snap) => {
           const isConn = Boolean(snap && snap.val());
@@ -2926,25 +3122,23 @@
           }
         });
 
-        let firstSnapHandled = false;
+        const profLabel = (getProfileById(activeProfileId)?.label) || activeProfileId;
         const unsubRoom = mod.onValue(roomRef, (snap) => {
           const val = snap ? snap.val() : null;
           const hadRemoteData = Boolean(val && typeof val === 'object' && (val.meta || (val.pbs && Object.keys(val.pbs).length)));
-          const localFilledBefore = !firstSnapHandled && hasLocalUserData();
-          firstSnapHandled = true;
           syncRuntime.hasReceivedSnapshot = true;
 
           applyRemoteSnapshot(val);
           updateSyncBadge('synced');
           saveStatusEl.textContent = '실시간 동기화됨';
 
-          if (!hadRemoteData && localFilledBefore) {
-            setSyncMsg('연결되었습니다(서버가 비어 있음). 이 기기의 기존 데이터를 올리려면 "로컬 전체 올리기"를 누르세요.', 'ok');
+          if (!hadRemoteData) {
+            setSyncMsg(`[${profLabel}] 연결 완료 (서버가 비어 있음 — 입력하면 실시간 저장됩니다)`, 'ok');
           } else {
-            setSyncMsg('실시간 동기화 연결 완료 (여러 기기 동시 편집 활성)', 'ok');
-            if (fromUserAction && syncDialog.open) {
-              syncDialog.close();
-            }
+            setSyncMsg(`[${profLabel}] 실시간 동기화 연결 완료 (여러 기기 동시 편집 활성)`, 'ok');
+          }
+          if (fromUserAction && syncDialog.open) {
+            syncDialog.close();
           }
         }, async (err) => {
           const codeStr = String((err && (err.code || err.message)) || err || '');
@@ -2981,8 +3175,10 @@
           }
         }
         try {
+          const basePath = getProfileDbPath();
+          if (!basePath) return;
           const { ref, update } = syncRuntime.mod;
-          const roomRef = ref(syncRuntime.db, `rooms/${syncRuntime.roomHash}`);
+          const roomRef = ref(syncRuntime.db, basePath);
           await update(roomRef, {
             meta: normalizeMeta(state.meta),
             pbs: Object.keys(pbsPayload).length ? pbsPayload : null,
@@ -3009,6 +3205,7 @@
         syncCfg.url = document.getElementById('sync-url').value.trim().replace(/\/+$/, '');
         syncCfg.pin = document.getElementById('sync-pin').value.trim();
         syncCfg.userName = document.getElementById('sync-user').value.trim();
+        syncCfg.disabled = false;
         saveSyncCfg();
         connectToFirebase({ fromUserAction: true });
       });
@@ -3039,12 +3236,14 @@
           ? `${location.origin}${location.pathname}`
           : location.href.split('?')[0];
         const cleanDefault = DEFAULT_DB_URL.replace(/\/+$/, '');
-        const shareUrl = (cleanDefault && rawUrl === cleanDefault)
-          ? base
-          : `${base}?fb=${encodeURIComponent(rawUrl)}`;
+        const sp = new URLSearchParams();
+        if (activeProfileId) sp.set('profile', activeProfileId);
+        if (!cleanDefault || rawUrl !== cleanDefault) sp.set('fb', rawUrl);
+        const qs = sp.toString();
+        const shareUrl = qs ? `${base}?${qs}` : base;
         try {
           await navigator.clipboard.writeText(shareUrl);
-          setSyncMsg('공유 링크를 복사했습니다 (접속코드 PIN은 별도 전달).', 'ok');
+          setSyncMsg('현재 프로필의 공유 링크를 복사했습니다.', 'ok');
         } catch {
           setSyncMsg(`공유 링크: ${shareUrl}`, 'ok');
         }
@@ -3052,38 +3251,44 @@
 
       document.getElementById('btn-sync-disconnect').addEventListener('click', async () => {
         await teardownFirebase();
-        syncCfg = { url: DEFAULT_DB_URL.replace(/\/+$/, ''), pin: '', userName: syncCfg.userName || '' };
+        syncCfg = {
+          url: DEFAULT_DB_URL.replace(/\/+$/, ''),
+          pin: DEFAULT_PIN,
+          userName: syncCfg.userName || '',
+          disabled: true,
+        };
         saveSyncCfg();
         syncSetupInputs();
         updateSyncBadge('local');
-        setSyncMsg('실시간 동기화를 해제했습니다. 현재 기기의 데이터는 그대로 유지됩니다.', '');
+        setSyncMsg('실시간 동기화를 해제했습니다. 다시 연결하려면 "연결"을 누르세요.', '');
       });
 
-      // URL ?fb=... parameter or DEFAULT_DB_URL prefill
+      // URL ?fb= / ?profile= parameter & automatic default configuration
       const urlParams = new URLSearchParams(window.location.search);
       const fbParam = (urlParams.get('fb') || '').trim().replace(/\/+$/, '');
+      const profileParam = (urlParams.get('profile') || '').trim();
+      let syncCfgDirty = false;
       if (fbParam && /^https:\/\/[a-zA-Z0-9.-]+/.test(fbParam)) {
         if (syncCfg.url !== fbParam) {
           syncCfg.url = fbParam;
-          saveSyncCfg();
+          syncCfgDirty = true;
         }
       } else if (!syncCfg.url && DEFAULT_DB_URL) {
         syncCfg.url = DEFAULT_DB_URL.replace(/\/+$/, '');
-        saveSyncCfg();
+        syncCfgDirty = true;
       }
-
-      const shouldOpenSyncOnLoad = Boolean((fbParam || DEFAULT_DB_URL) && syncCfg.url && !syncCfg.pin);
+      if (!syncCfg.pin && DEFAULT_PIN) {
+        syncCfg.pin = DEFAULT_PIN;
+        syncCfgDirty = true;
+      }
+      if (syncCfgDirty) saveSyncCfg();
 
       render();
-      if (isSyncConfigured()) {
-        connectToFirebase({ fromUserAction: false });
+      updateSyncBadge('local');
+      if (profileParam && getProfileById(profileParam)) {
+        selectProfile(profileParam);
       } else {
-        updateSyncBadge('local');
-      }
-      if (shouldOpenSyncOnLoad) {
-        syncSetupInputs();
-        setSyncMsg('실시간 동기화 링크로 접속했습니다. 접속코드(PIN)와 내 이름을 입력한 뒤 "연결"을 누르세요.', 'warn');
-        syncDialog.showModal();
+        openProfileDialog({ required: true });
       }
     })();
   </script>
