@@ -714,9 +714,44 @@
       font-weight: 600;
     }
 
+    .ch-field input[data-filled="false"] {
+      background: #f1f5f9;
+      border: 1.5px dashed #cbd5e1;
+      color: var(--ink);
+      transition: background-color 0.12s ease, border-color 0.12s ease;
+    }
+
+    .ch-field input[data-filled="false"]:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
+    .ch-field input[data-filled="false"]:focus {
+      background: #ffffff;
+      border: 1.5px solid #2563eb;
+    }
+
     .ch-field input[data-filled="true"] {
       background: #f0fdf4;
-      border-color: #16a34a;
+      border: 1.5px solid #16a34a;
+      color: #0f172a;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 1px 2px rgba(22, 163, 74, 0.12);
+    }
+
+    .ch-field:has(input[data-filled="false"]):not(:focus-within) label {
+      color: #94a3b8;
+      font-weight: 600;
+    }
+
+    .ch-field:has(input[data-filled="false"]):not(:focus-within) label span.ch-idx {
+      color: #cbd5e1;
+    }
+
+    .ch-field:has(input[data-filled="true"]) label {
+      color: #14532d;
+      font-weight: 800;
     }
 
     /* Moving details */
@@ -2423,7 +2458,7 @@
             type: 'text', id: cid, name: cid, inputmode: 'numeric',
             pattern: '^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$',
             autocorrect: 'off', autocapitalize: 'none', spellcheck: 'false',
-            value: step.border[key], placeholder: '0~255',
+            value: step.border[key], placeholder: '',
           });
           inp.dataset.filled = step.border[key] !== '' ? 'true' : 'false';
           attachNumericHandlers(inp, (v) => { step.border[key] = v; persistField(pbKey, sIdx, `border/${key}`, v); });
@@ -2496,7 +2531,7 @@
               type: 'text', id: cid, inputmode: 'numeric',
               pattern: '^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$',
               autocorrect: 'off', autocapitalize: 'none', spellcheck: 'false',
-              value: grp.ch[key], placeholder: '0~255',
+              value: grp.ch[key], placeholder: '',
             });
             inp.dataset.filled = grp.ch[key] !== '' ? 'true' : 'false';
             attachNumericHandlers(inp, (v) => { grp.ch[key] = v; persistField(pbKey, sIdx, `par/${gIdx}/ch/${key}`, v); });
@@ -2603,7 +2638,7 @@
               type: 'text', id: cid, inputmode: 'numeric',
               pattern: '^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$',
               autocorrect: 'off', autocapitalize: 'none', spellcheck: 'false',
-              value: grp.ch[key], placeholder: '0~255',
+              value: grp.ch[key], placeholder: '',
             });
             inp.dataset.filled = grp.ch[key] !== '' ? 'true' : 'false';
             attachNumericHandlers(inp, (v) => { grp.ch[key] = v; persistField(pbKey, sIdx, `spot/${gIdx}/ch/${key}`, v); });
@@ -2666,7 +2701,7 @@
             type: 'text', id: cid, inputmode: 'numeric',
             pattern: '^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$',
             autocorrect: 'off', autocapitalize: 'none', spellcheck: 'false',
-            value: step.moving.f9[key], placeholder: '0~255',
+            value: step.moving.f9[key], placeholder: '',
           });
           inp.dataset.filled = step.moving.f9[key] !== '' ? 'true' : 'false';
           attachNumericHandlers(inp, (v) => { step.moving.f9[key] = v; persistField(pbKey, sIdx, `moving/f9/${key}`, v); });
@@ -2701,7 +2736,7 @@
               type: 'text', id: cid, inputmode: 'numeric',
               pattern: '^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$',
               autocorrect: 'off', autocapitalize: 'none', spellcheck: 'false',
-              value: step.moving.f10[key], placeholder: '0~255',
+              value: step.moving.f10[key], placeholder: '',
             });
             inp.dataset.filled = step.moving.f10[key] !== '' ? 'true' : 'false';
             attachNumericHandlers(inp, (v) => { step.moving.f10[key] = v; persistField(pbKey, sIdx, `moving/f10/${key}`, v); });
